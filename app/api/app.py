@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app import version
-from app.api.routes import health
+from app.api.v1.routes import health
 
 app = FastAPI(
     title="Scraper Service",

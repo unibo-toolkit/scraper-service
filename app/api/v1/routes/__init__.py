@@ -2,6 +2,6 @@
 API routes.
 """
 
-from app.api.routes import health
+from app.api.v1.routes import health
 
 __all__ = ["health"]
