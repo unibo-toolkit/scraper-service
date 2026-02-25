@@ -56,8 +56,8 @@ class ScraperConfig:
 @dataclass
 class SchedulerConfig:
     timezone: str
-    update_active_courses_interval_hours: int
-    active_calendar_threshold_hours: int
+    update_courses_interval_seconds: int
+    active_calendar_threshold_seconds: int
 
 
 class Config:
@@ -119,17 +119,17 @@ class ConfigLoader:
 
             scraper = ScraperConfig(
                 request_timeout=int(os.getenv("SCRAPER_REQUEST_TIMEOUT", 30)),
-                cache_courses_list_ttl=int(os.getenv("CACHE_COURSES_LIST_TTL", 600)),
-                cache_timetable_ttl=int(os.getenv("CACHE_TIMETABLE_TTL", 3600)),
+                cache_courses_list_ttl=int(os.getenv("CACHE_COURSES_LIST_TTL", 86400)),  # 24 hours - cache lives longer than update interval
+                cache_timetable_ttl=int(os.getenv("CACHE_TIMETABLE_TTL", 3600)),  # 1 hour for timetables
             )
 
             scheduler = SchedulerConfig(
                 timezone=os.getenv("SCHEDULER_TIMEZONE", "UTC"),
-                update_active_courses_interval_hours=int(
-                    os.getenv("UPDATE_ACTIVE_COURSES_INTERVAL_HOURS", 1)
+                update_courses_interval_seconds=int(
+                    os.getenv("UPDATE_COURSES_INTERVAL_SECONDS", 43200)
                 ),
-                active_calendar_threshold_hours=int(
-                    os.getenv("ACTIVE_CALENDAR_THRESHOLD_HOURS", 24)
+                active_calendar_threshold_seconds=int(
+                    os.getenv("ACTIVE_CALENDAR_THRESHOLD_SECONDS", 86400)
                 ),
             )
 

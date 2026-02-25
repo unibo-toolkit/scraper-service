@@ -92,6 +92,7 @@ async def fetch_courses_english(logger: Optional[CustomLogger] = None) -> Dict[i
 async def fetch_timetable(
     course_site_url: str, curriculum_code: str, curriculum_label: str, academic_year: int
 ) -> Dict:
+    logger = CustomLogger("scraper:timetable")
     logger.info("fetching timetable", curriculum_code=curriculum_code, year=academic_year)
 
     curriculum = Curriculum(code=curriculum_code, label=curriculum_label)

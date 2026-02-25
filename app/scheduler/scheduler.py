@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app import config
 from app.scheduler.jobs import update_courses_cache
@@ -15,7 +15,10 @@ scheduler = AsyncIOScheduler(timezone=config.scheduler.timezone)
 def setup_scheduler():
     scheduler.add_job(
         update_courses_cache,
-        trigger=CronTrigger(minute="*/10", timezone=config.scheduler.timezone),
+        trigger=IntervalTrigger(
+            seconds=config.scheduler.update_courses_interval_seconds,
+            timezone=config.scheduler.timezone
+        ),
         id="update_courses_cache",
         name="Update Courses Cache",
         replace_existing=True,

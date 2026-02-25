@@ -1,7 +1,3 @@
-"""
-API routes.
-"""
-
 from . import health
 from . import courses
 
