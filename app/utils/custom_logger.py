@@ -22,12 +22,11 @@ class MultiItem:
 
 
 class CustomLogger:
-    items: List[LogItem] = []
-
     def __init__(self, name: str, **items: Any):
         self.name = name
         self.logger = logging.getLogger(name)
-        if items.items():
+        self.items: List[LogItem] = []
+        if items:
             self.items = self.__transform_items(items).all
 
     def __send_message(self, msg: str, level: int, items: List[LogItem]) -> None:
@@ -68,10 +67,9 @@ class CustomLogger:
     def with_items(self, **items: Any) -> None:
         self.items.extend(self.__transform_items(items).all)
 
-    @classmethod
-    def clear(cls) -> None:
-        cls.items.clear()
+    def clear(self) -> None:
+        self.items.clear()
 
     def __del__(self):
-        if self.items:
+        if hasattr(self, 'items'):
             del self.items

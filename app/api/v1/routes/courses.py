@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query
 from uuid import UUID
 
 from app.utils.custom_logger import CustomLogger
 from app.core import cache
 from app.scheduler.jobs import update_courses_cache
+from app.api.exceptions import NotFoundError, ServiceUnavailableError
 
 router = APIRouter()
 
@@ -13,7 +14,7 @@ async def get_courses(
     q: str = Query(None, description="Search by title"),
     type: str = Query(None, regex="^(Bachelor|Master|SingleCycleMaster)$"),
     lang: str = Query("it", regex="^(it|en)$"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=300),
     offset: int = Query(0, ge=0),
 ):
     logger = CustomLogger("api:get_courses")
@@ -28,7 +29,7 @@ async def get_courses(
 
         cached_data = await cache.get_cached_courses(logger=logger)
         if not cached_data:
-            raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+            raise ServiceUnavailableError("Service temporarily unavailable. Please try again later.")
 
     courses = cached_data["items"]
 
@@ -94,7 +95,7 @@ async def get_course_by_id(
 
         cached_data = await cache.get_cached_courses(logger=logger)
         if not cached_data:
-            raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+            raise ServiceUnavailableError("Service temporarily unavailable. Please try again later.")
 
     course = None
     for c in cached_data["items"]:
@@ -103,7 +104,7 @@ async def get_course_by_id(
             break
 
     if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
+        raise NotFoundError(f"Course with ID {course_id} not found")
 
     curricula = course.get("curricula", [])
     sorted_curricula = sorted(curricula, key=lambda x: x.get("code", ""))

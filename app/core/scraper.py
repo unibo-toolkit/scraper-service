@@ -12,12 +12,12 @@ async def _fetch_sites_urls(course: BaseCourse, client: HTTPClient, logger: Opti
     if not logger:
         logger = CustomLogger("scraper:fetch_sites")
 
-    for _ in range(3):
+    for attempt in range(3):
         try:
             await course.fetch_site_url(client)
             return
         except ValueError as e:
-            logger.warning("failed to fetch site url", course_id=course.course_id, error=str(e))
+            logger.warning("failed to fetch site url", course_id=course.course_id, attempt=attempt + 1, error=str(e))
 
     logger.error("failed to fetch site url after retries", course_id=course.course_id, retries=3)
 
