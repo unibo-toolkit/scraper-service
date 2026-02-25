@@ -30,9 +30,9 @@ class CustomLogger:
         if items.items():
             self.items = self.__transform_items(items).all
 
-    def __send_message(self, message: str, level: int, items: List[LogItem]) -> None:
+    def __send_message(self, msg: str, level: int, items: List[LogItem]) -> None:
         log = (
-            'msg="' + message + '"' + (" " + " ".join(map(str, items)) if items else "")
+            'msg="' + msg + '"' + (" " + " ".join(map(str, items)) if items else "")
         )
         self.logger.log(level, log)
 
@@ -40,29 +40,29 @@ class CustomLogger:
     def __transform_items(items: Dict[str, Any]) -> MultiItem:
         return MultiItem({key: str(value) for key, value in items.items()})
 
-    def info(self, message: str, **items: Any) -> None:
+    def info(self, msg: str, **items: Any) -> None:
         self.__send_message(
-            message, logging.INFO, self.items + self.__transform_items(items).all
+            msg, logging.INFO, self.items + self.__transform_items(items).all
         )
 
-    def debug(self, message: str, **items: Any) -> None:
+    def debug(self, msg: str, **items: Any) -> None:
         self.__send_message(
-            message, logging.DEBUG, self.items + self.__transform_items(items).all
+            msg, logging.DEBUG, self.items + self.__transform_items(items).all
         )
 
-    def warning(self, message: str, **items: Any) -> None:
+    def warning(self, msg: str, **items: Any) -> None:
         self.__send_message(
-            message, logging.WARNING, self.items + self.__transform_items(items).all
+            msg, logging.WARNING, self.items + self.__transform_items(items).all
         )
 
-    def error(self, message: str, **items: Any) -> None:
+    def error(self, msg: str, **items: Any) -> None:
         self.__send_message(
-            message, logging.ERROR, self.items + self.__transform_items(items).all
+            msg, logging.ERROR, self.items + self.__transform_items(items).all
         )
 
-    def critical(self, message: str, **items: Any) -> None:
+    def critical(self, msg: str, **items: Any) -> None:
         self.__send_message(
-            message, logging.CRITICAL, self.items + self.__transform_items(items).all
+            msg, logging.CRITICAL, self.items + self.__transform_items(items).all
         )
 
     def with_items(self, **items: Any) -> None:

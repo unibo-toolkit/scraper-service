@@ -21,15 +21,15 @@ class RedisClient:
                 decode_responses=True,
             )
             await self.redis.ping()
-            logger.info("Redis connected", url=config.redis.url)
+            logger.info("redis connected", url=config.redis.url)
         except Exception as e:
-            logger.error("Redis connection failed", error=str(e))
+            logger.error("redis connection failed", error=str(e))
             raise
 
     async def disconnect(self) -> None:
         if self.redis:
             await self.redis.close()
-            logger.info("Redis disconnected")
+            logger.info("redis disconnected")
 
     async def get(self, key: str) -> Optional[Any]:
         if not self.redis:
@@ -41,7 +41,7 @@ class RedisClient:
                 return json.loads(value)
             return None
         except Exception as e:
-            logger.warning("Redis GET failed", key=key, error=str(e))
+            logger.warning("redis GET failed", key=key, error=str(e))
             return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
@@ -56,7 +56,7 @@ class RedisClient:
                 await self.redis.set(key, serialized)
             return True
         except Exception as e:
-            logger.warning("Redis SET failed", key=key, error=str(e))
+            logger.warning("redis SET failed", key=key, error=str(e))
             return False
 
     async def delete(self, key: str) -> bool:
@@ -67,7 +67,7 @@ class RedisClient:
             await self.redis.delete(key)
             return True
         except Exception as e:
-            logger.warning("Redis DELETE failed", key=key, error=str(e))
+            logger.warning("redis DELETE failed", key=key, error=str(e))
             return False
 
     async def exists(self, key: str) -> bool:
@@ -77,7 +77,7 @@ class RedisClient:
         try:
             return await self.redis.exists(key) > 0
         except Exception as e:
-            logger.warning("Redis EXISTS failed", key=key, error=str(e))
+            logger.warning("redis EXISTS failed", key=key, error=str(e))
             return False
 
 

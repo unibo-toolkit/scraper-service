@@ -4,6 +4,7 @@ import uvicorn
 
 from app import config, log, version
 from app.api.app import app
+from app.scheduler.scheduler import start_scheduler, stop_scheduler
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import close, init
 from app.utils.redis_client import redis_client
@@ -14,21 +15,23 @@ logger = CustomLogger("Main")
 
 
 async def setup():
-    logger.info("Starting scraper-service", version=version, port=config.app.port)
+    logger.info("starting scraper-service", version=version, port=config.app.port)
 
     await init()
     await redis_client.connect()
+    start_scheduler()
 
-    logger.info("Startup complete")
+    logger.info("startup complete")
 
 
 async def shutdown():
-    logger.info("Shutting down scraper-service")
+    logger.info("shutting down scraper-service")
 
+    stop_scheduler()
     await close()
     await redis_client.disconnect()
 
-    logger.info("Shutdown complete")
+    logger.info("shutdown complete")
 
 
 async def main():

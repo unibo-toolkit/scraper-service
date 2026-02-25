@@ -2,16 +2,14 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from app import version
-from app.schemas.health import HealthStatus
 from app.utils.database import engine
 from app.utils.redis_client import redis_client
 
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthStatus)
-async def health_check() -> HealthStatus:
-    """Health check endpoint"""
+@router.get("/health")
+async def health_check():
     db_status = "healthy"
     redis_status = "healthy"
     overall_status = "healthy"
@@ -33,10 +31,10 @@ async def health_check() -> HealthStatus:
         redis_status = f"unhealthy: {str(e)}"
         overall_status = "unhealthy"
 
-    return HealthStatus(
-        status=overall_status,
-        version=version,
-        database=db_status,
-        redis=redis_status,
-        details={"service": "scraper-service"},
-    )
+    return {
+        "status": overall_status,
+        "version": version,
+        "database": db_status,
+        "redis": redis_status,
+        "details": {"service": "scraper-service"},
+    }

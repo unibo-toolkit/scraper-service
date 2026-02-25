@@ -1,0 +1,48 @@
+from datetime import datetime
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app import config
+from app.scheduler.jobs import update_courses_cache
+from app.utils.custom_logger import CustomLogger
+
+logger = CustomLogger("Scheduler")
+
+scheduler = AsyncIOScheduler(timezone=config.scheduler.timezone)
+
+
+def setup_scheduler():
+    scheduler.add_job(
+        update_courses_cache,
+        trigger=CronTrigger(minute="*/10", timezone=config.scheduler.timezone),
+        id="update_courses_cache",
+        name="Update Courses Cache",
+        replace_existing=True,
+        next_run_time=datetime.now(tz=scheduler.timezone)
+    )
+
+    logger.info("scheduler configured with all jobs", timezone=config.scheduler.timezone)
+
+    jobs = scheduler.get_jobs()
+    for job in jobs:
+        if hasattr(job, 'next_run_time'):
+            logger.info("scheduled job", name=job.name, next_run=str(job.next_run_time))
+        else:
+            logger.info("scheduled job", name=job.name, trigger=str(job.trigger))
+
+
+def start_scheduler():
+    setup_scheduler()
+    scheduler.start()
+    logger.info("scheduler started")
+
+    all_jobs = scheduler.get_jobs()
+    logger.info("total scheduled jobs", count=len(all_jobs))
+    for job in all_jobs:
+        logger.debug("active job", id=job.id, name=job.name)
+
+
+def stop_scheduler():
+    scheduler.shutdown()
+    logger.info("scheduler stopped")

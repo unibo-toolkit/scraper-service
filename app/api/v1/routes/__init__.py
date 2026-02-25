@@ -2,6 +2,7 @@
 API routes.
 """
 
-from app.api.v1.routes import health
+from . import health
+from . import courses
 
-__all__ = ["health"]
+__all__ = ["health", "courses"]
