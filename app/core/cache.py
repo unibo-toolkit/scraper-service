@@ -42,3 +42,39 @@ async def set_cached_courses(courses: List[Dict], logger: Optional[CustomLogger]
 
     except Exception as e:
         logger.warning("failed to cache courses", error=str(e))
+
+
+async def get_cached_subjects(
+    cache_key: str,
+    logger: Optional[CustomLogger] = None
+) -> Optional[List[dict]]:
+    if not logger:
+        logger = CustomLogger("cache:subjects")
+
+    try:
+        data = await redis_client.redis.get(cache_key)
+        if data:
+            return json.loads(data)
+    except Exception as e:
+        logger.warning("cache get failed", error=str(e))
+
+    return None
+
+
+async def set_cached_subjects(
+    cache_key: str,
+    subjects: List[dict],
+    logger: Optional[CustomLogger] = None
+):
+    if not logger:
+        logger = CustomLogger("cache:subjects")
+
+    try:
+        ttl = config.scraper.cache_timetable_ttl
+        await redis_client.redis.setex(
+            cache_key,
+            ttl,
+            json.dumps(subjects)
+        )
+    except Exception as e:
+        logger.warning("cache set failed", error=str(e))

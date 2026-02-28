@@ -63,7 +63,6 @@ async def get_courses(
             "campus": course["campus"],
             "languages": course["languages"],
             "duration_years": course["duration_years"],
-            "academic_year": course["academic_year"],
             "url": course["url"],
             "area": course["area"],
             "curricula": sorted_curricula,
@@ -117,7 +116,6 @@ async def get_course_by_id(
         "campus": course["campus"],
         "languages": course["languages"],
         "duration_years": course["duration_years"],
-        "academic_year": course["academic_year"],
         "url": course["url"],
         "area": course["area"],
         "curricula": sorted_curricula

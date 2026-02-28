@@ -6,7 +6,6 @@ import uuid
 from sqlalchemy import ARRAY, BigInteger, Boolean, CheckConstraint, DateTime, Enum, ForeignKeyConstraint, Index, Integer, Numeric, PrimaryKeyConstraint, SmallInteger, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-
 class Base(DeclarativeBase):
     pass
 
@@ -46,7 +45,6 @@ class Courses(Base):
     campus: Mapped[Optional[str]] = mapped_column(String(255))
     languages: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String(length=255)))
     duration_years: Mapped[Optional[int]] = mapped_column(SmallInteger)
-    academic_year: Mapped[Optional[str]] = mapped_column(String(10))
     url: Mapped[Optional[str]] = mapped_column(Text)
     area: Mapped[Optional[str]] = mapped_column(String(255))
     timetable_hash: Mapped[Optional[str]] = mapped_column(String(64))
@@ -223,8 +221,7 @@ class Subjects(Base):
     __table_args__ = (
         ForeignKeyConstraint(['curriculum_id'], ['curricula.id'], ondelete='CASCADE', name='subjects_curriculum_id_fkey'),
         PrimaryKeyConstraint('id', name='subjects_pkey'),
-        Index('idx_subjects_curriculum_id', 'curriculum_id'),
-        Index('idx_subjects_unibo_id', 'unibo_id')
+        Index('idx_subjects_curriculum_id', 'curriculum_id')
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
@@ -232,9 +229,7 @@ class Subjects(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
-    unibo_id: Mapped[Optional[int]] = mapped_column(Integer)
-    subject_code: Mapped[Optional[str]] = mapped_column(String(50))
-    module_id: Mapped[Optional[str]] = mapped_column(String(50))
+    module_code: Mapped[Optional[str]] = mapped_column(String(50))
     group_id: Mapped[Optional[str]] = mapped_column(String(50))
     credits: Mapped[Optional[int]] = mapped_column(SmallInteger)
     professor: Mapped[Optional[str]] = mapped_column(String(255))

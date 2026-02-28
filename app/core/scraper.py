@@ -31,7 +31,6 @@ def _get_course_dict(course: BaseCourse) -> Dict:
         "campus": course.campus.value if course.campus else None,
         "languages": [lang.value for lang in course.languages] if course.languages else [],
         "duration_years": course.duration_years,
-        "academic_year": str(course.year),
         "url": course.course_site_url,
         "area": _extract_area(course.area),
         "curricula": (
@@ -132,12 +131,22 @@ def _extract_area(area) -> str:
 
 
 def _parse_event(event) -> Dict:
+    classroom = event.primary_classroom if hasattr(event, 'primary_classroom') else None
+
     return {
         "title": event.title,
-        "start_time": event.start.isoformat(),
-        "end_time": event.end.isoformat(),
-        "location": event.location,
+        "start_time": event.start,
+        "end_time": event.end,
+        "location": classroom.title if classroom else None,
+        "address": classroom.address if classroom else None,
+        "latitude": classroom.latitude if classroom else None,
+        "longitude": classroom.longitude if classroom else None,
         "professor": event.professor,
-        "event_type": event.event_type.value if event.event_type else None,
-        "cfu": event.cfu,
+        "event_type": event.event_type.value if hasattr(event, 'event_type') and event.event_type else None,
+        "cfu": event.credits if hasattr(event, 'credits') else None,
+        "is_remote": event.is_remote if hasattr(event, 'is_remote') else False,
+        "teams_link": event.teams_link if hasattr(event, 'teams_link') else None,
+        "notes": event.notes if hasattr(event, 'notes') else None,
+        "group_id": event.extract_group_id(event.cod_sdoppiamento) if hasattr(event, 'extract_group_id') and hasattr(event, 'cod_sdoppiamento') else None,
+        "module_code": event.module_code if hasattr(event, 'module_code') else None,
     }

@@ -5,9 +5,16 @@ from app.utils.custom_logger import CustomLogger
 from app.utils.database import AsyncSessionLocal, AsyncSession
 from app.core import scraper, cache
 from app.core.database import DatabaseOperations
+from app.core.subjects import fetch_and_save_subjects
 
 
-async def _resolve_results(courses_it: List[Dict], english_titles: Dict, db: DatabaseOperations, session: AsyncSession, logger: Optional[CustomLogger] = None):
+async def _resolve_results(
+    courses_it: List[Dict],
+    english_titles: Dict,
+    db: DatabaseOperations,
+    session: AsyncSession,
+    logger: Optional[CustomLogger] = None,
+):
     if not logger:
         logger = CustomLogger("resolve_results")
 
@@ -40,7 +47,6 @@ def _format_courses_for_cache(courses: List[Courses]) -> List[Dict]:
             "campus": course.campus,
             "languages": course.languages or [],
             "duration_years": course.duration_years,
-            "academic_year": course.academic_year,
             "url": course.url,
             "area": course.area,
             "curricula": sorted(
@@ -76,6 +82,11 @@ async def update_courses_cache(logger: Optional[CustomLogger] = None):
 
             await _resolve_results(courses_it, english_titles, db, session, logger=logger)
 
+            current_unibo_ids = [c["unibo_id"] for c in courses_it]
+            deleted = await db.delete_obsolete_courses(current_unibo_ids)
+            if deleted > 0:
+                logger.info("deleted obsolete courses", count=deleted)
+
             courses = await db.get_all_courses(with_curricula=True)
 
             formated_courses = _format_courses_for_cache(courses)
@@ -83,4 +94,78 @@ async def update_courses_cache(logger: Optional[CustomLogger] = None):
             logger.info("cashing courses completed")
         except Exception as e:
             logger.error("failed to update courses cache", error=str(e))
+            raise
+
+
+async def update_timetables(logger: Optional[CustomLogger] = None):
+    if not logger:
+        logger = CustomLogger("scheduler:update_timetables")
+
+    logger.info("starting timetables update")
+
+    async with AsyncSessionLocal() as session:
+        try:
+            db_ops = DatabaseOperations(session, logger=logger)
+
+            active_curricula = await db_ops.get_active_curricula()
+            logger.info("found active curricula", count=len(active_curricula))
+
+            if not active_curricula:
+                logger.info("no active curricula to update")
+                return
+
+            updated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            for curriculum in active_curricula:
+                try:
+                    logger.debug(
+                        "processing curriculum",
+                        curriculum_id=str(curriculum.id),
+                        code=curriculum.code,
+                    )
+
+                    course = curriculum.course
+
+                    if not course or not course.url:
+                        logger.warning(
+                            "no course url for curriculum", curriculum_id=str(curriculum.id)
+                        )
+                        error_count += 1
+                        continue
+
+                    subjects = await fetch_and_save_subjects(session, course, curriculum, logger)
+
+                    cache_key = f"subjects:{curriculum.id}"
+                    await cache.set_cached_subjects(cache_key, subjects, logger)
+
+                    if course.timetable_hash:
+                        updated_count += 1
+                    else:
+                        skipped_count += 1
+
+                except Exception as e:
+                    logger.error(
+                        "failed to update timetable", curriculum_id=str(curriculum.id), error=str(e)
+                    )
+                    error_count += 1
+                    continue
+
+            deleted_classrooms = await db_ops.cleanup_unused_classrooms()
+            if deleted_classrooms > 0:
+                logger.info("deleted unused classrooms", count=deleted_classrooms)
+
+            await session.commit()
+
+            logger.info(
+                "timetables update completed",
+                updated=updated_count,
+                skipped=skipped_count,
+                errors=error_count,
+            )
+
+        except Exception as e:
+            logger.error("failed to update timetables", error=str(e))
+            await session.rollback()
             raise

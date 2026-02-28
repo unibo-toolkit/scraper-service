@@ -6,7 +6,6 @@ from app.api.exceptions import (
     ValidationError,
     NotFoundError,
     ServiceUnavailableError,
-    ErrorResponse,
     create_error_response,
 )
 from app.utils.custom_logger import CustomLogger

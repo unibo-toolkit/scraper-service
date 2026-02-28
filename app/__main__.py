@@ -3,7 +3,7 @@ import asyncio
 import uvicorn
 
 from app import config, log, version
-from app.api.app import app
+from app.api.server import app
 from app.scheduler.scheduler import start_scheduler, stop_scheduler
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import close, init
