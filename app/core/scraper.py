@@ -6,6 +6,7 @@ from unibo_toolkit.enums import Language
 from unibo_toolkit.models import Curriculum
 
 from app.utils.custom_logger import CustomLogger
+from app import config
 
 
 async def _fetch_sites_urls(course: BaseCourse, client: HTTPClient, logger: Optional[CustomLogger] = None):
@@ -55,13 +56,17 @@ async def fetch_courses_italian(logger: Optional[CustomLogger] = None) -> List[D
 
     logger.info("fetch site URLs for courses", count=len(courses))
     async with HTTPClient() as client:
-        tasks = [asyncio.create_task(_fetch_sites_urls(course, client, logger)) for course in courses]
-        await asyncio.gather(*tasks)
+        for i, course in enumerate(courses):
+            await _fetch_sites_urls(course, client, logger)
+            if i < len(courses) - 1:
+                await asyncio.sleep(config.scraper.delay_between_site_url_requests)
 
     logger.info("fetch available curricula for courses")
 
-    tasks = [asyncio.create_task(course.fetch_available_curricula()) for course in courses]
-    await asyncio.gather(*tasks)
+    for i, course in enumerate(courses):
+        await course.fetch_available_curricula()
+        if i < len(courses) - 1:
+            await asyncio.sleep(config.scraper.delay_between_curricula_requests)
 
     result = []
     for course in courses:

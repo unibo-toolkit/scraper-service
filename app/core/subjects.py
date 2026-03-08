@@ -23,7 +23,7 @@ async def fetch_and_save_subjects(
     )
 
     new_hash = timetable_data.get("content_hash")
-    if not force_update and course.timetable_hash == new_hash:
+    if not force_update and curriculum.timetable_hash == new_hash:
         logger.info(
             "timetable unchanged, skipping update",
             course_id=str(course.id),
@@ -42,17 +42,6 @@ async def fetch_and_save_subjects(
             }
             for s in existing_subjects
         ]
-
-    existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
-    if existing_subjects:
-        subject_ids = [s.id for s in existing_subjects]
-        await db_ops.delete_timetable_events_by_subject(subject_ids)
-        await db_ops.delete_subjects_by_curriculum(curriculum.id)
-        logger.debug(
-            "deleted old subjects and events",
-            curriculum_id=str(curriculum.id),
-            count=len(subject_ids),
-        )
 
     subjects_map = {}
     classrooms_map = {}
@@ -87,7 +76,13 @@ async def fetch_and_save_subjects(
         saved_classrooms[(classroom.name, classroom.address)] = classroom
 
     subjects = list(subjects_map.values())
-    await db_ops.bulk_insert_subjects(subjects)
+    await db_ops.upsert_subjects(subjects)
+
+    active_keys = [
+        (s["title"], s.get("module_code"), s.get("professor"))
+        for s in subjects
+    ]
+    await db_ops.mark_inactive_subjects(curriculum.id, active_keys)
 
     existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
     subject_mapping = {(s.title, s.professor, s.credits): s for s in existing_subjects}
@@ -123,7 +118,7 @@ async def fetch_and_save_subjects(
 
     await db_ops.bulk_insert_timetable_events(timetable_events)
 
-    await db_ops.update_course_timetable_hash(course.id, new_hash)
+    await db_ops.update_curriculum_timetable_hash(curriculum.id, new_hash)
     logger.info(
         "updated timetable hash", course_id=str(course.id), curriculum_id=str(curriculum.id)
     )

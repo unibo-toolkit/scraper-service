@@ -46,6 +46,7 @@ class DatabaseOperations:
 
         if existing:
             update_data = {k: v for k, v in course_data.items() if k != "curricula"}
+            update_data["is_active"] = True
 
             stmt = update(Courses).where(Courses.id == existing.id).values(**update_data)
             await self.session.execute(stmt)
@@ -55,6 +56,7 @@ class DatabaseOperations:
             return existing
 
         course_data_clean = {k: v for k, v in course_data.items() if k != "curricula"}
+        course_data_clean["is_active"] = True
         course = Courses(**course_data_clean)
         self.session.add(course)
         await self.session.flush()
@@ -80,21 +82,53 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalars().all()
 
-    async def delete_curricula_by_course(self, course_id: UUID):
-        await self.session.execute(delete(Curricula).where(Curricula.course_id == course_id))
-
-    async def insert_curricula(self, course_id: UUID, curricula_list: List[Dict]):
-        await self.delete_curricula_by_course(course_id)
-
+    async def upsert_curricula(self, course_id: UUID, curricula_list: List[Dict]):
         for curriculum_data in curricula_list:
-            curriculum = Curricula(
-                course_id=course_id,
-                code=curriculum_data["code"],
-                label=curriculum_data["label"],
-                academic_year=curriculum_data["academic_year"],
+            existing = await self.get_curriculum_by_code(
+                course_id,
+                curriculum_data["code"],
+                curriculum_data["academic_year"]
             )
-            self.session.add(curriculum)
 
+            if existing:
+                stmt = update(Curricula).where(Curricula.id == existing.id).values(
+                    label=curriculum_data["label"],
+                    is_active=True
+                )
+                await self.session.execute(stmt)
+            else:
+                curriculum = Curricula(
+                    course_id=course_id,
+                    code=curriculum_data["code"],
+                    label=curriculum_data["label"],
+                    academic_year=curriculum_data["academic_year"],
+                    is_active=True
+                )
+                self.session.add(curriculum)
+
+        await self.session.flush()
+
+    async def mark_inactive_curricula(
+        self,
+        course_id: UUID,
+        active_codes: List[tuple]
+    ):
+        if not active_codes:
+            return
+
+        from sqlalchemy import tuple_
+        stmt = (
+            update(Curricula)
+            .where(
+                and_(
+                    Curricula.course_id == course_id,
+                    Curricula.is_active == True,
+                    ~tuple_(Curricula.code, Curricula.academic_year).in_(active_codes)
+                )
+            )
+            .values(is_active=False)
+        )
+        await self.session.execute(stmt)
         await self.session.flush()
 
     async def get_curriculum_by_code(
@@ -121,10 +155,81 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalars().all()
 
-    async def bulk_insert_subjects(self, subjects: List[Dict]):
+    async def get_subject_by_key(
+        self,
+        curriculum_id: UUID,
+        title: str,
+        module_code: Optional[str],
+        professor: Optional[str]
+    ) -> Optional[Subjects]:
+        query = select(Subjects).where(
+            and_(
+                Subjects.curriculum_id == curriculum_id,
+                Subjects.title == title,
+                Subjects.module_code == module_code if module_code else Subjects.module_code.is_(None),
+                Subjects.professor == professor if professor else Subjects.professor.is_(None)
+            )
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def upsert_subjects(self, subjects: List[Dict]):
         for subject_data in subjects:
-            subject = Subjects(**subject_data)
-            self.session.add(subject)
+            existing = await self.get_subject_by_key(
+                subject_data["curriculum_id"],
+                subject_data["title"],
+                subject_data.get("module_code"),
+                subject_data.get("professor")
+            )
+
+            if existing:
+                stmt = update(Subjects).where(Subjects.id == existing.id).values(
+                    credits=subject_data.get("credits"),
+                    group_id=subject_data.get("group_id"),
+                    is_active=True,
+                    updated_at=datetime.now(UTC)
+                )
+                await self.session.execute(stmt)
+            else:
+                subject_data["is_active"] = True
+                subject = Subjects(**subject_data)
+                self.session.add(subject)
+
+        await self.session.flush()
+
+    async def mark_inactive_subjects(
+        self,
+        curriculum_id: UUID,
+        active_keys: List[tuple]
+    ):
+        if not active_keys:
+            return
+
+        from sqlalchemy import or_
+        conditions = []
+        for title, module_code, professor in active_keys:
+            cond = and_(
+                Subjects.title == title,
+                Subjects.module_code == module_code if module_code else Subjects.module_code.is_(None),
+                Subjects.professor == professor if professor else Subjects.professor.is_(None)
+            )
+            conditions.append(cond)
+
+        if not conditions:
+            return
+
+        stmt = (
+            update(Subjects)
+            .where(
+                and_(
+                    Subjects.curriculum_id == curriculum_id,
+                    Subjects.is_active == True,
+                    ~or_(*conditions)
+                )
+            )
+            .values(is_active=False)
+        )
+        await self.session.execute(stmt)
         await self.session.flush()
 
     async def bulk_insert_timetable_events(self, events: List[Dict]):
@@ -197,14 +302,14 @@ class DatabaseOperations:
         )
         await self.session.flush()
 
-    async def update_course_timetable_hash(
+    async def update_curriculum_timetable_hash(
         self,
-        course_id: UUID,
+        curriculum_id: UUID,
         timetable_hash: str
     ):
         stmt = (
-            update(Courses)
-            .where(Courses.id == course_id)
+            update(Curricula)
+            .where(Curricula.id == curriculum_id)
             .values(
                 timetable_hash=timetable_hash,
                 timetable_updated_at=datetime.now(UTC)
@@ -226,12 +331,19 @@ class DatabaseOperations:
         await self.session.flush()
         return result.rowcount
 
-    async def delete_obsolete_courses(self, current_unibo_ids: List[int]):
-        if not current_unibo_ids:
+    async def mark_inactive_courses(self, active_unibo_ids: List[int]):
+        if not active_unibo_ids:
             return 0
 
-        stmt = delete(Courses).where(
-            Courses.unibo_id.not_in(current_unibo_ids)
+        stmt = (
+            update(Courses)
+            .where(
+                and_(
+                    Courses.is_active == True,
+                    Courses.unibo_id.not_in(active_unibo_ids)
+                )
+            )
+            .values(is_active=False)
         )
 
         result = await self.session.execute(stmt)
@@ -243,6 +355,37 @@ class DatabaseOperations:
             select(Courses)
             .join(Curricula)
             .where(Curricula.id == curriculum_id)
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_timetable_events_by_subject_ids(
+        self,
+        subject_ids: List[UUID],
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None
+    ) -> List[TimetableEvents]:
+        conditions = [TimetableEvents.subject_id.in_(subject_ids)]
+
+        if from_date is not None:
+            conditions.append(TimetableEvents.start_datetime >= from_date)
+        if to_date is not None:
+            conditions.append(TimetableEvents.start_datetime < to_date)
+
+        query = (
+            select(TimetableEvents)
+            .where(and_(*conditions))
+            .options(selectinload(TimetableEvents.classroom))
+            .order_by(TimetableEvents.start_datetime)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def get_subject_by_id(self, subject_id: UUID) -> Optional[Subjects]:
+        query = (
+            select(Subjects)
+            .where(Subjects.id == subject_id)
+            .options(selectinload(Subjects.curriculum))
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()

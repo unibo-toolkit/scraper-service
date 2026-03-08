@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, List, Optional
 
 from app.models import Courses
@@ -6,6 +7,7 @@ from app.utils.database import AsyncSessionLocal, AsyncSession
 from app.core import scraper, cache
 from app.core.database import DatabaseOperations
 from app.core.subjects import fetch_and_save_subjects
+from app import config
 
 
 async def _resolve_results(
@@ -29,7 +31,14 @@ async def _resolve_results(
                 for year in range(1, course_data["duration_years"] + 1)
                 for curr in course_data["curricula"]
             ]
-            await db.insert_curricula(course.id, curricula_to_save)
+            await db.upsert_curricula(course.id, curricula_to_save)
+
+            active_codes = [
+                (curr["code"], year)
+                for year in range(1, course_data["duration_years"] + 1)
+                for curr in course_data["curricula"]
+            ]
+            await db.mark_inactive_curricula(course.id, active_codes)
 
     await session.commit()
     logger.debug("resolved and saved courses", count=len(courses_it))
@@ -83,9 +92,9 @@ async def update_courses_cache(logger: Optional[CustomLogger] = None):
             await _resolve_results(courses_it, english_titles, db, session, logger=logger)
 
             current_unibo_ids = [c["unibo_id"] for c in courses_it]
-            deleted = await db.delete_obsolete_courses(current_unibo_ids)
-            if deleted > 0:
-                logger.info("deleted obsolete courses", count=deleted)
+            marked_inactive = await db.mark_inactive_courses(current_unibo_ids)
+            if marked_inactive > 0:
+                logger.info("marked inactive courses", count=marked_inactive)
 
             courses = await db.get_all_courses(with_curricula=True)
 
@@ -118,7 +127,7 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
             skipped_count = 0
             error_count = 0
 
-            for curriculum in active_curricula:
+            for idx, curriculum in enumerate(active_curricula):
                 try:
                     logger.debug(
                         "processing curriculum",
@@ -140,7 +149,7 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
                     cache_key = f"subjects:{curriculum.id}"
                     await cache.set_cached_subjects(cache_key, subjects, logger)
 
-                    if course.timetable_hash:
+                    if curriculum.timetable_hash:
                         updated_count += 1
                     else:
                         skipped_count += 1
@@ -151,6 +160,9 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
                     )
                     error_count += 1
                     continue
+
+                if idx < len(active_curricula) - 1:
+                    await asyncio.sleep(config.scraper.delay_between_timetable_requests)
 
             deleted_classrooms = await db_ops.cleanup_unused_classrooms()
             if deleted_classrooms > 0:

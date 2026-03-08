@@ -78,3 +78,16 @@ async def set_cached_subjects(
         )
     except Exception as e:
         logger.warning("cache set failed", error=str(e))
+
+
+async def delete_cached_subjects(
+    cache_key: str,
+    logger: Optional[CustomLogger] = None
+):
+    if not logger:
+        logger = CustomLogger("cache:subjects")
+
+    try:
+        await redis_client.redis.delete(cache_key)
+    except Exception as e:
+        logger.warning("cache delete failed", error=str(e))

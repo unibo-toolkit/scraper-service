@@ -31,7 +31,7 @@ class Courses(Base):
     __table_args__ = (
         PrimaryKeyConstraint('id', name='courses_pkey'),
         UniqueConstraint('unibo_id', name='courses_unibo_id_key'),
-        Index('idx_courses_timetable_updated', 'timetable_updated_at'),
+        Index('idx_courses_is_active', 'is_active'),
         Index('idx_courses_title_en_trgm', 'title_en'),
         Index('idx_courses_title_it_trgm', 'title_it'),
         Index('idx_courses_unibo_id', 'unibo_id')
@@ -42,13 +42,12 @@ class Courses(Base):
     course_type: Mapped[str] = mapped_column(Enum('Bachelor', 'Master', 'SingleCycleMaster', name='course_type'), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     title_it: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     campus: Mapped[Optional[str]] = mapped_column(String(255))
     languages: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String(length=255)))
     duration_years: Mapped[Optional[int]] = mapped_column(SmallInteger)
     url: Mapped[Optional[str]] = mapped_column(Text)
     area: Mapped[Optional[str]] = mapped_column(String(255))
-    timetable_hash: Mapped[Optional[str]] = mapped_column(String(64))
-    timetable_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     title_en: Mapped[Optional[str]] = mapped_column(String(500))
 
     curricula: Mapped[list['Curricula']] = relationship('Curricula', back_populates='course')
@@ -121,7 +120,9 @@ class Curricula(Base):
         PrimaryKeyConstraint('id', name='curricula_pkey'),
         UniqueConstraint('course_id', 'code', 'academic_year', name='curricula_course_id_code_academic_year_key'),
         Index('idx_curricula_course_code_year', 'course_id', 'code', 'academic_year'),
-        Index('idx_curricula_course_id', 'course_id')
+        Index('idx_curricula_course_id', 'course_id'),
+        Index('idx_curricula_is_active', 'is_active'),
+        Index('idx_curricula_timetable_hash', 'timetable_hash')
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
@@ -129,8 +130,10 @@ class Curricula(Base):
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     academic_year: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    timetable_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    timetable_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
 
     course: Mapped['Courses'] = relationship('Courses', back_populates='curricula')
     calendar_courses: Mapped[list['CalendarCourses']] = relationship('CalendarCourses', back_populates='curriculum')
@@ -221,7 +224,8 @@ class Subjects(Base):
     __table_args__ = (
         ForeignKeyConstraint(['curriculum_id'], ['curricula.id'], ondelete='CASCADE', name='subjects_curriculum_id_fkey'),
         PrimaryKeyConstraint('id', name='subjects_pkey'),
-        Index('idx_subjects_curriculum_id', 'curriculum_id')
+        Index('idx_subjects_curriculum_id', 'curriculum_id'),
+        Index('idx_subjects_is_active', 'is_active')
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
@@ -229,6 +233,7 @@ class Subjects(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     module_code: Mapped[Optional[str]] = mapped_column(String(50))
     group_id: Mapped[Optional[str]] = mapped_column(String(50))
     credits: Mapped[Optional[int]] = mapped_column(SmallInteger)

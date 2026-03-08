@@ -5,6 +5,7 @@ import uvicorn
 from app import config, log, version
 from app.api.server import app
 from app.scheduler.scheduler import start_scheduler, stop_scheduler
+from app.scheduler.jobs import update_courses_cache
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import close, init
 from app.utils.redis_client import redis_client
@@ -19,6 +20,17 @@ async def setup():
 
     await init()
     await redis_client.connect()
+
+    if config.app.skip_startup_jobs:
+        logger.warning("skipping startup jobs (SKIP_STARTUP_JOBS=true)")
+    else:
+        logger.info("running startup jobs")
+        try:
+            await update_courses_cache(logger=logger)
+        except Exception as e:
+            logger.error("startup job failed", error=str(e))
+            raise
+
     start_scheduler()
 
     logger.info("startup complete")

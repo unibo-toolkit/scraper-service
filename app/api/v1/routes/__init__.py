@@ -1,4 +1,3 @@
-from . import health
-from . import courses
+from . import health, courses, subjects, timetable
 
-__all__ = ["health", "courses"]
+__all__ = ["health", "courses", "subjects", "timetable"]

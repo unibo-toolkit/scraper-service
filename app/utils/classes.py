@@ -20,6 +20,7 @@ class AppConfig:
     debug_mode: bool
     port: int
     log_level: str
+    skip_startup_jobs: bool
 
 
 @dataclass
@@ -51,6 +52,9 @@ class ScraperConfig:
     request_timeout: int
     cache_courses_list_ttl: int
     cache_timetable_ttl: int
+    delay_between_curricula_requests: float
+    delay_between_site_url_requests: float
+    delay_between_timetable_requests: float
 
 
 @dataclass
@@ -101,6 +105,7 @@ class ConfigLoader:
                 debug_mode=os.getenv("DEBUG_MODE", "false").lower() == "true",
                 port=int(os.getenv("PORT", 8083)),
                 log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+                skip_startup_jobs=os.getenv("SKIP_STARTUP_JOBS", "false").lower() == "true",
             )
 
             database = DatabaseConfig(
@@ -119,8 +124,11 @@ class ConfigLoader:
 
             scraper = ScraperConfig(
                 request_timeout=int(os.getenv("SCRAPER_REQUEST_TIMEOUT", 30)),
-                cache_courses_list_ttl=int(os.getenv("CACHE_COURSES_LIST_TTL", 86400)),  # 24 hours - cache lives longer than update interval
+                cache_courses_list_ttl=int(os.getenv("CACHE_COURSES_LIST_TTL", 86400)),
                 cache_timetable_ttl=int(os.getenv("CACHE_TIMETABLE_TTL", 86400)),
+                delay_between_curricula_requests=float(os.getenv("DELAY_BETWEEN_CURRICULA_REQUESTS", 0.1)),
+                delay_between_site_url_requests=float(os.getenv("DELAY_BETWEEN_SITE_URL_REQUESTS", 0.1)),
+                delay_between_timetable_requests=float(os.getenv("DELAY_BETWEEN_TIMETABLE_REQUESTS", 0.1)),
             )
 
             scheduler = SchedulerConfig(
