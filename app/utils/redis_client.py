@@ -1,5 +1,4 @@
-import json
-from typing import Any, Optional
+from typing import Optional
 
 from redis import asyncio as aioredis
 
@@ -30,55 +29,6 @@ class RedisClient:
         if self.redis:
             await self.redis.close()
             logger.info("redis disconnected")
-
-    async def get(self, key: str) -> Optional[Any]:
-        if not self.redis:
-            return None
-
-        try:
-            value = await self.redis.get(key)
-            if value:
-                return json.loads(value)
-            return None
-        except Exception as e:
-            logger.warning("redis GET failed", key=key, error=str(e))
-            return None
-
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
-        if not self.redis:
-            return False
-
-        try:
-            serialized = json.dumps(value, ensure_ascii=False)
-            if ttl:
-                await self.redis.setex(key, ttl, serialized)
-            else:
-                await self.redis.set(key, serialized)
-            return True
-        except Exception as e:
-            logger.warning("redis SET failed", key=key, error=str(e))
-            return False
-
-    async def delete(self, key: str) -> bool:
-        if not self.redis:
-            return False
-
-        try:
-            await self.redis.delete(key)
-            return True
-        except Exception as e:
-            logger.warning("redis DELETE failed", key=key, error=str(e))
-            return False
-
-    async def exists(self, key: str) -> bool:
-        if not self.redis:
-            return False
-
-        try:
-            return await self.redis.exists(key) > 0
-        except Exception as e:
-            logger.warning("redis EXISTS failed", key=key, error=str(e))
-            return False
 
 
 redis_client = RedisClient()

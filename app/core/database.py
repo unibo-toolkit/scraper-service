@@ -63,25 +63,6 @@ class DatabaseOperations:
         self.logger.debug("created new course", unibo_id=course_data["unibo_id"])
         return course
 
-    async def update_course_titles(self, unibo_id: int, title_it: str = None, title_en: str = None):
-        stmt = update(Courses).where(Courses.unibo_id == unibo_id)
-
-        values = {}
-        if title_it:
-            values["title_it"] = title_it
-        if title_en:
-            values["title_en"] = title_en
-
-        if values:
-            stmt = stmt.values(**values)
-            await self.session.execute(stmt)
-            await self.session.flush()
-
-    async def get_curricula_by_course(self, course_id: UUID) -> List[Curricula]:
-        query = select(Curricula).where(Curricula.course_id == course_id)
-        result = await self.session.execute(query)
-        return result.scalars().all()
-
     async def upsert_curricula(self, course_id: UUID, curricula_list: List[Dict]):
         for curriculum_data in curricula_list:
             existing = await self.get_curriculum_by_code(
@@ -286,21 +267,6 @@ class DatabaseOperations:
 
         result = await self.session.execute(query)
         return result.scalars().all()
-
-    async def delete_subjects_by_curriculum(self, curriculum_id: UUID):
-        await self.session.execute(
-            delete(Subjects).where(Subjects.curriculum_id == curriculum_id)
-        )
-        await self.session.flush()
-
-    async def delete_timetable_events_by_subject(self, subject_ids: List[UUID]):
-        if not subject_ids:
-            return
-
-        await self.session.execute(
-            delete(TimetableEvents).where(TimetableEvents.subject_id.in_(subject_ids))
-        )
-        await self.session.flush()
 
     async def update_curriculum_timetable_hash(
         self,
