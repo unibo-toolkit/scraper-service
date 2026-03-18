@@ -34,7 +34,7 @@ def setup_scheduler():
         id="update_timetables",
         name="Update Timetables",
         replace_existing=True,
-        next_run_time=datetime.datetime.now(tz=scheduler.timezone) + datetime.timedelta(minutes=1)
+        next_run_time=datetime.datetime.now(tz=scheduler.timezone) + datetime.timedelta(minutes=5)
     )
 
     logger.info("scheduler configured with all jobs", timezone=config.scheduler.timezone)
