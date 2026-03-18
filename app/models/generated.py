@@ -269,6 +269,7 @@ class TimetableEvents(Base):
         ForeignKeyConstraint(['classroom_id'], ['classrooms.id'], ondelete='SET NULL', name='timetable_events_classroom_id_fkey'),
         ForeignKeyConstraint(['subject_id'], ['subjects.id'], ondelete='CASCADE', name='timetable_events_subject_id_fkey'),
         PrimaryKeyConstraint('id', name='timetable_events_pkey'),
+        UniqueConstraint('subject_id', 'start_datetime', 'end_datetime', 'content_hash', name='timetable_events_unique_event'),
         Index('idx_timetable_events_hash', 'content_hash'),
         Index('idx_timetable_events_start', 'start_datetime'),
         Index('idx_timetable_events_subject_id', 'subject_id')
