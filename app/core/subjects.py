@@ -79,7 +79,7 @@ async def fetch_and_save_subjects(
     await db_ops.upsert_subjects(subjects)
 
     active_keys = [
-        (s["title"], s.get("module_code"), s.get("professor"))
+        (s["title"], s.get("professor"), s.get("cfu"))
         for s in subjects
     ]
     await db_ops.mark_inactive_subjects(curriculum.id, active_keys)

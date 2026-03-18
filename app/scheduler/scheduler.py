@@ -28,7 +28,7 @@ def setup_scheduler():
     scheduler.add_job(
         update_timetables,
         trigger=IntervalTrigger(
-            seconds=3000,
+            seconds=config.scheduler.update_timetables_interval_seconds,
             timezone=config.scheduler.timezone
         ),
         id="update_timetables",

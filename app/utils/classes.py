@@ -61,7 +61,7 @@ class ScraperConfig:
 class SchedulerConfig:
     timezone: str
     update_courses_interval_seconds: int
-    active_calendar_threshold_seconds: int
+    update_timetables_interval_seconds: int
 
 
 class Config:
@@ -136,8 +136,8 @@ class ConfigLoader:
                 update_courses_interval_seconds=int(
                     os.getenv("UPDATE_COURSES_INTERVAL_SECONDS", 43200)
                 ),
-                active_calendar_threshold_seconds=int(
-                    os.getenv("ACTIVE_CALENDAR_THRESHOLD_SECONDS", 3600)
+                update_timetables_interval_seconds=int(
+                    os.getenv("UPDATE_TIMETABLES_INTERVAL_SECONDS", 3600)
                 ),
             )
 
