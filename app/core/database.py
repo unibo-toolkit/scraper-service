@@ -214,9 +214,16 @@ class DatabaseOperations:
         await self.session.flush()
 
     async def bulk_insert_timetable_events(self, events: List[Dict]):
-        for event_data in events:
-            event = TimetableEvents(**event_data)
-            self.session.add(event)
+        from sqlalchemy.dialects.postgresql import insert
+
+        if not events:
+            return
+
+        stmt = insert(TimetableEvents).values(events)
+        stmt = stmt.on_conflict_do_nothing(
+            constraint='timetable_events_unique_event'
+        )
+        await self.session.execute(stmt)
         await self.session.flush()
 
     async def upsert_classroom(self, classroom_data: Dict) -> Classrooms:
