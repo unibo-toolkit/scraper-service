@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install --no-cache-dir poetry==1.8.0
 
-COPY pyproject.toml ./
+COPY pyproject.toml poetry.lock ./
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+    && poetry install --only main --no-interaction --no-ansi
 
 FROM python:3.13-slim
 
