@@ -8,7 +8,7 @@ from app.utils.redis_client import redis_client
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/scraper/health")
 async def health_check():
     db_status = "healthy"
     redis_status = "healthy"
