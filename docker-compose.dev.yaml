@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: scraper-postgres
+    environment:
+      POSTGRES_DB: unibo_toolkit
+      POSTGRES_USER: unibo_user
+      POSTGRES_PASSWORD: unibo_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unibo_user -d unibo_toolkit"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scraper-network
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: scraper-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - scraper-network
+
+  # Scraper service
+  scraper-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scraper-service
+    ports:
+      - "8083:8083"
+    environment:
+      DEBUG_MODE: "true"
+      PORT: 8083
+      LOG_LEVEL: DEBUG
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: unibo_toolkit
+      DB_USER: unibo_user
+      DB_PASSWORD: unibo_pass
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 3
+      SCRAPER_REQUEST_TIMEOUT: 30
+      CACHE_COURSES_LIST_TTL: 600
+      CACHE_TIMETABLE_TTL: 3600
+      SCHEDULER_TIMEZONE: UTC
+      UPDATE_ACTIVE_COURSES_INTERVAL_HOURS: 1
+      ACTIVE_CALENDAR_THRESHOLD_HOURS: 24
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - scraper-network
+    volumes:
+      - ./app:/app/app:ro  # Mount for hot reload (dev only)
+    profiles:
+      - full-stack  # Run only with docker compose --profile full-stack up
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  scraper-network:
+    driver: bridge
