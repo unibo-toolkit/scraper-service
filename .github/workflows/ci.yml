@@ -89,12 +89,24 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ steps.new_version.outputs.version }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
+      - name: Determine infra paths
+        if: github.ref == 'refs/heads/main'
+        id: infra
+        run: |
+          if [ "${{ env.SERVICE_NAME }}" = "frontend" ]; then
+            echo "kustomization=frontend/kustomization.yaml" >> $GITHUB_OUTPUT
+            echo "deployment=frontend/deployment.yaml" >> $GITHUB_OUTPUT
+          else
+            echo "kustomization=backend/kustomization.yaml" >> $GITHUB_OUTPUT
+            echo "deployment=backend/${{ env.SERVICE_NAME }}/deployment.yaml" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy — update infra repo (version bump)
         if: github.ref == 'refs/heads/main' && steps.bump.outputs.type != 'none'
         run: |
           git clone https://${{ secrets.INFRA_TOKEN_OWNER }}:${{ secrets.INFRA_TOKEN }}@github.com/unibo-toolkit/infra.git /tmp/infra
           cd /tmp/infra
-          sed -i "s|newTag: .*# ${{ env.SERVICE_NAME }}|newTag: ${{ steps.new_version.outputs.version }} # ${{ env.SERVICE_NAME }}|" overlays/prod/kustomization.yaml
+          sed -i "s|newTag: .*# ${{ env.SERVICE_NAME }}|newTag: ${{ steps.new_version.outputs.version }} # ${{ env.SERVICE_NAME }}|" ${{ steps.infra.outputs.kustomization }}
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
@@ -107,7 +119,7 @@ jobs:
           git clone https://${{ secrets.INFRA_TOKEN_OWNER }}:${{ secrets.INFRA_TOKEN }}@github.com/unibo-toolkit/infra.git /tmp/infra
           cd /tmp/infra
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          sed -i "s|restartedAt: .*# ${{ env.SERVICE_NAME }}|restartedAt: \"$TIMESTAMP\" # ${{ env.SERVICE_NAME }}|" overlays/prod/patches/${{ env.SERVICE_NAME }}.yaml
+          sed -i "s|restartedAt: .*# ${{ env.SERVICE_NAME }}|restartedAt: \"$TIMESTAMP\" # ${{ env.SERVICE_NAME }}|" ${{ steps.infra.outputs.deployment }}
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
