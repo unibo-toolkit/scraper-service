@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Dict, Optional
+from zoneinfo import ZoneInfo
 from unibo_toolkit import CourseScraper, HTTPClient, BaseCourse
 from unibo_toolkit.scrapers import TimetableScraper
 from unibo_toolkit.enums import Language
@@ -7,6 +8,8 @@ from unibo_toolkit.models import Curriculum
 
 from app.utils.custom_logger import CustomLogger
 from app import config
+
+ROME_TZ = ZoneInfo("Europe/Rome")
 
 
 async def _fetch_sites_urls(course: BaseCourse, client: HTTPClient, logger: Optional[CustomLogger] = None):
@@ -135,13 +138,21 @@ def _extract_area(area) -> str:
     return str(area)
 
 
+def _localize_rome(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=ROME_TZ)
+    return dt
+
+
 def _parse_event(event) -> Dict:
     classroom = event.primary_classroom if hasattr(event, 'primary_classroom') else None
 
     return {
         "title": event.title,
-        "start_time": event.start,
-        "end_time": event.end,
+        "start_time": _localize_rome(event.start),
+        "end_time": _localize_rome(event.end),
         "location": classroom.title if classroom else None,
         "address": classroom.address if classroom else None,
         "latitude": classroom.latitude if classroom else None,
