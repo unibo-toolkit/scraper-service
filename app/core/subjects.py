@@ -15,6 +15,7 @@ async def fetch_and_save_subjects(
     curriculum: Curricula,
     logger: CustomLogger,
     force_update: bool = False,
+    active_only: bool = True,
 ) -> List[Dict]:
     db_ops = DatabaseOperations(session, logger)
 
@@ -30,7 +31,7 @@ async def fetch_and_save_subjects(
             curriculum_id=str(curriculum.id),
         )
 
-        existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
+        existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=active_only)
         return [
             {
                 "id": str(s.id),
@@ -47,7 +48,7 @@ async def fetch_and_save_subjects(
     classrooms_map = {}
 
     for event in timetable_data.get("events", []):
-        subject_key = (event.get("title"), event.get("professor"), event.get("cfu"))
+        subject_key = (event.get("title"), event.get("module_code"), event.get("professor"))
 
         if subject_key not in subjects_map:
             subjects_map[subject_key] = {
@@ -79,17 +80,17 @@ async def fetch_and_save_subjects(
     await db_ops.upsert_subjects(subjects)
 
     active_keys = [
-        (s["title"], s.get("professor"), s.get("cfu"))
+        (s["title"], s.get("module_code"), s.get("professor"))
         for s in subjects
     ]
     await db_ops.mark_inactive_subjects(curriculum.id, active_keys)
 
-    existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
-    subject_mapping = {(s.title, s.professor, s.credits): s for s in existing_subjects}
+    existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=False)
+    subject_mapping = {(s.title, s.module_code, s.professor): s for s in existing_subjects}
 
     timetable_events = []
     for event in timetable_data.get("events", []):
-        subject_key = (event.get("title"), event.get("professor"), event.get("cfu"))
+        subject_key = (event.get("title"), event.get("module_code"), event.get("professor"))
         subject = subject_mapping.get(subject_key)
         if not subject:
             continue
@@ -125,6 +126,7 @@ async def fetch_and_save_subjects(
 
     await session.commit()
 
+    result_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=active_only)
     return [
         {
             "id": str(s.id),
@@ -134,7 +136,7 @@ async def fetch_and_save_subjects(
             "professor": s.professor,
             "group_id": s.group_id,
         }
-        for s in existing_subjects
+        for s in result_subjects
     ]
 
 

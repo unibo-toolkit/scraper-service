@@ -66,7 +66,7 @@ def _format_courses_for_cache(courses: List[Courses]) -> List[Dict]:
                         "label": curr.label,
                         "academic_year": curr.academic_year,
                     }
-                    for curr in (course.curricula or [])
+                    for curr in (course.curricula or []) if curr.is_active
                 ],
                 key=lambda x: (x.get("academic_year", 0)),
             ),

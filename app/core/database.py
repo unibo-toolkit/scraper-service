@@ -23,8 +23,10 @@ class DatabaseOperations:
         self.session = session
         self.logger = logger or CustomLogger("database")
 
-    async def get_all_courses(self, with_curricula: bool = False) -> List[Courses]:
+    async def get_all_courses(self, with_curricula: bool = False, active_only: bool = True) -> List[Courses]:
         query = select(Courses)
+        if active_only:
+            query = query.where(Courses.is_active == True)
         if with_curricula:
             query = query.options(selectinload(Courses.curricula))
 
@@ -131,8 +133,10 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_subjects_by_curriculum(self, curriculum_id: UUID) -> List[Subjects]:
+    async def get_subjects_by_curriculum(self, curriculum_id: UUID, active_only: bool = True) -> List[Subjects]:
         query = select(Subjects).where(Subjects.curriculum_id == curriculum_id)
+        if active_only:
+            query = query.where(Subjects.is_active == True)
         result = await self.session.execute(query)
         return result.scalars().all()
 
