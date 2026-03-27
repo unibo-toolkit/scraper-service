@@ -16,6 +16,7 @@ router = APIRouter()
 async def get_course_subjects(
     course_id: UUID,
     curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+    include_inactive: bool = Query(False, description="Include inactive subjects"),
     session: AsyncSession = Depends(get_db)
 ):
     logger = CustomLogger("api:get_course_subjects")
@@ -34,17 +35,20 @@ async def get_course_subjects(
         raise NotFoundError(f"Curriculum {curriculum_id} does not belong to course {course_id}")
 
     cache_key = f"subjects:{curriculum.id}"
-    cached = await cache.get_cached_subjects(cache_key, logger)
-    if cached:
-        return {"items": cached}
+    if not include_inactive:
+        cached = await cache.get_cached_subjects(cache_key, logger)
+        if cached:
+            return {"items": cached}
 
     subjects = await fetch_and_save_subjects(
         session,
         course,
         curriculum,
-        logger
+        logger,
+        active_only=not include_inactive,
     )
 
-    await cache.set_cached_subjects(cache_key, subjects, logger)
+    if not include_inactive:
+        await cache.set_cached_subjects(cache_key, subjects, logger)
 
     return {"items": subjects}

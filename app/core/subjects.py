@@ -15,6 +15,7 @@ async def fetch_and_save_subjects(
     curriculum: Curricula,
     logger: CustomLogger,
     force_update: bool = False,
+    active_only: bool = True,
 ) -> List[Dict]:
     db_ops = DatabaseOperations(session, logger)
 
@@ -30,7 +31,7 @@ async def fetch_and_save_subjects(
             curriculum_id=str(curriculum.id),
         )
 
-        existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
+        existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=active_only)
         return [
             {
                 "id": str(s.id),
@@ -84,7 +85,7 @@ async def fetch_and_save_subjects(
     ]
     await db_ops.mark_inactive_subjects(curriculum.id, active_keys)
 
-    existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id)
+    existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=False)
     subject_mapping = {(s.title, s.module_code, s.professor): s for s in existing_subjects}
 
     timetable_events = []
@@ -125,6 +126,7 @@ async def fetch_and_save_subjects(
 
     await session.commit()
 
+    result_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=active_only)
     return [
         {
             "id": str(s.id),
@@ -134,7 +136,7 @@ async def fetch_and_save_subjects(
             "professor": s.professor,
             "group_id": s.group_id,
         }
-        for s in existing_subjects
+        for s in result_subjects
     ]
 
 
