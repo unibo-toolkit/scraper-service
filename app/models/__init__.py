@@ -1,6 +1,5 @@
 from app.models.generated import (
     CalendarCourses,
-    CalendarEvents,
     CalendarLinks,
     CalendarSubjects,
     CalendarSubscriptions,
@@ -26,7 +25,6 @@ __all__ = [
     "CalendarLinks",
     "CalendarCourses",
     "CalendarSubjects",
-    "CalendarEvents",
     "CalendarSubscriptions",
     "Users",
     "OauthProviders",
