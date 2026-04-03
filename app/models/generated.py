@@ -95,13 +95,14 @@ class CalendarLinks(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
-    slug: Mapped[str] = mapped_column(String(16), nullable=False)
+    slug: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False, server_default=text("'My Calendar'::character varying"))
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text('0'))
     ttl_expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    lang: Mapped[str] = mapped_column(String(5), nullable=False, server_default=text("'it'::character varying"))
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
     description: Mapped[Optional[str]] = mapped_column(Text)
     last_accessed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
@@ -109,7 +110,6 @@ class CalendarLinks(Base):
     owner: Mapped[Optional['Users']] = relationship('Users', back_populates='calendar_links')
     calendar_courses: Mapped[list['CalendarCourses']] = relationship('CalendarCourses', back_populates='calendar')
     calendar_subscriptions: Mapped[list['CalendarSubscriptions']] = relationship('CalendarSubscriptions', back_populates='calendar')
-    calendar_events: Mapped[list['CalendarEvents']] = relationship('CalendarEvents', back_populates='calendar')
 
 
 class Curricula(Base):
@@ -294,23 +294,3 @@ class TimetableEvents(Base):
 
     classroom: Mapped[Optional['Classrooms']] = relationship('Classrooms', back_populates='timetable_events')
     subject: Mapped['Subjects'] = relationship('Subjects', back_populates='timetable_events')
-    calendar_events: Mapped[list['CalendarEvents']] = relationship('CalendarEvents', back_populates='timetable_event')
-
-
-class CalendarEvents(Base):
-    __tablename__ = 'calendar_events'
-    __table_args__ = (
-        ForeignKeyConstraint(['calendar_id'], ['calendar_links.id'], ondelete='CASCADE', name='calendar_events_calendar_id_fkey'),
-        ForeignKeyConstraint(['timetable_event_id'], ['timetable_events.id'], ondelete='CASCADE', name='calendar_events_timetable_event_id_fkey'),
-        PrimaryKeyConstraint('id', name='calendar_events_pkey'),
-        UniqueConstraint('calendar_id', 'timetable_event_id', name='calendar_events_calendar_id_timetable_event_id_key'),
-        Index('idx_calendar_events_calendar_id', 'calendar_id')
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
-    calendar_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    timetable_event_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    sequence: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text('0'))
-
-    calendar: Mapped['CalendarLinks'] = relationship('CalendarLinks', back_populates='calendar_events')
-    timetable_event: Mapped['TimetableEvents'] = relationship('TimetableEvents', back_populates='calendar_events')

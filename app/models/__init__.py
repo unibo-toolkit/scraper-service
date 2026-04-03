@@ -26,7 +26,6 @@ __all__ = [
     "CalendarLinks",
     "CalendarCourses",
     "CalendarSubjects",
-    "CalendarEvents",
     "CalendarSubscriptions",
     "Users",
     "OauthProviders",
