@@ -21,7 +21,18 @@ def _get_week_monday(target_date: datetime) -> datetime:
     return monday
 
 
-def _find_closest_event(events: List, reference_date: datetime):
+def _find_anchor_event(events: List, reference_date: datetime):
+    if not events:
+        return None
+
+    future = [e for e in events if e.start_datetime >= reference_date]
+    if future:
+        return min(future, key=lambda e: (e.start_datetime - reference_date).total_seconds())
+
+    return max(events, key=lambda e: e.start_datetime)
+
+
+def _find_closest_to_date(events: List, reference_date: datetime):
     if not events:
         return None
 
@@ -150,21 +161,19 @@ async def preview_timetable(
         }
 
     now = datetime.now(UTC)
-    target_event = _find_closest_event(all_events, now)
+    anchor_event = _find_anchor_event(all_events, now)
 
-    target_monday = _get_week_monday(target_event.start_datetime) + timedelta(weeks=page)
-    from_date = target_monday - timedelta(weeks=1)
-    to_date = target_monday + timedelta(weeks=2)
+    page_monday = _get_week_monday(anchor_event.start_datetime) + timedelta(weeks=page)
+    from_date = page_monday - timedelta(weeks=1)
+    to_date = page_monday + timedelta(weeks=2)
 
     preview_events = [e for e in all_events if from_date <= e.start_datetime < to_date]
-
-    actual_from_date = min(e.start_datetime for e in preview_events) if preview_events else from_date
-    actual_to_date = max(e.start_datetime for e in preview_events) if preview_events else to_date
+    target_event = _find_closest_to_date(preview_events, page_monday)
 
     return {
         "items": [_format_event(event) for event in preview_events],
-        "from_date": actual_from_date.isoformat(),
-        "to_date": actual_to_date.isoformat(),
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
         "total": len(preview_events),
         "target": _format_event(target_event) if target_event else None
     }
