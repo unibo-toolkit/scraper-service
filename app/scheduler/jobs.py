@@ -145,12 +145,14 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
                         error_count += 1
                         continue
 
+                    old_hash = curriculum.timetable_hash
                     subjects = await fetch_and_save_subjects(session, course, curriculum, logger)
+                    await session.refresh(curriculum)
 
                     cache_key = f"subjects:{curriculum.id}"
                     await cache.set_cached_subjects(cache_key, subjects, logger)
 
-                    if curriculum.timetable_hash:
+                    if curriculum.timetable_hash != old_hash:
                         updated_count += 1
                     else:
                         skipped_count += 1

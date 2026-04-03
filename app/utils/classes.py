@@ -52,6 +52,7 @@ class ScraperConfig:
     request_timeout: int
     cache_courses_list_ttl: int
     cache_subjects_ttl: int
+    subjects_refresh_ttl: int
     timetable_events_ttl: int
     delay_between_curricula_requests: float
     delay_between_site_url_requests: float
@@ -128,6 +129,7 @@ class ConfigLoader:
                 request_timeout=int(os.getenv("SCRAPER_REQUEST_TIMEOUT", 30)),
                 cache_courses_list_ttl=int(os.getenv("CACHE_COURSES_LIST_TTL", 86400)),
                 cache_subjects_ttl=int(os.getenv("CACHE_SUBJECTS_TTL", 86400)),
+                subjects_refresh_ttl=int(os.getenv("SUBJECTS_REFRESH_TTL", 3600)),
                 timetable_events_ttl=int(os.getenv("TIMETABLE_EVENTS_TTL", 3600)),
                 delay_between_curricula_requests=float(os.getenv("DELAY_BETWEEN_CURRICULA_REQUESTS", 0.1)),
                 delay_between_site_url_requests=float(os.getenv("DELAY_BETWEEN_SITE_URL_REQUESTS", 0.1)),

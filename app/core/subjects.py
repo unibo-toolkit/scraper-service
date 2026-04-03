@@ -87,6 +87,7 @@ async def fetch_and_save_subjects(
 
     existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=False)
     subject_mapping = {(s.title, s.module_code, s.professor): s for s in existing_subjects}
+    all_subject_ids = [s.id for s in existing_subjects]
 
     timetable_events = []
     for event in timetable_data.get("events", []):
@@ -117,7 +118,7 @@ async def fetch_and_save_subjects(
             }
         )
 
-    await db_ops.bulk_insert_timetable_events(timetable_events)
+    await db_ops.sync_timetable_events(all_subject_ids, timetable_events)
 
     await db_ops.update_curriculum_timetable_hash(curriculum.id, new_hash)
     logger.info(

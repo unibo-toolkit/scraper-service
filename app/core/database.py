@@ -217,18 +217,27 @@ class DatabaseOperations:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def bulk_insert_timetable_events(self, events: List[Dict]):
+    async def sync_timetable_events(self, subject_ids: List[UUID], events: List[Dict]):
         from sqlalchemy.dialects.postgresql import insert
 
-        if not events:
-            return
+        new_hashes = {e["content_hash"] for e in events}
+        calendar_subq = select(CalendarEvents.timetable_event_id).distinct()
 
-        stmt = insert(TimetableEvents).values(events)
-        stmt = stmt.on_conflict_do_nothing(
-            constraint='timetable_events_unique_event'
-        )
-        await self.session.execute(stmt)
+        delete_conditions = [
+            TimetableEvents.subject_id.in_(subject_ids),
+            TimetableEvents.id.not_in(calendar_subq),
+        ]
+        if new_hashes:
+            delete_conditions.append(TimetableEvents.content_hash.not_in(new_hashes))
+
+        await self.session.execute(delete(TimetableEvents).where(and_(*delete_conditions)))
         await self.session.flush()
+
+        if events:
+            stmt = insert(TimetableEvents).values(events)
+            stmt = stmt.on_conflict_do_nothing(constraint='timetable_events_unique_event')
+            await self.session.execute(stmt)
+            await self.session.flush()
 
     async def upsert_classroom(self, classroom_data: Dict) -> Classrooms:
         address = classroom_data.get("address")
@@ -260,7 +269,8 @@ class DatabaseOperations:
         return classroom
 
     async def get_active_curricula(self) -> List[Curricula]:
-        threshold_date = datetime.now(UTC) - timedelta(days=7)
+        now = datetime.now(UTC)
+        threshold_date = now - timedelta(days=7)
 
         query = (
             select(Curricula)
@@ -268,7 +278,7 @@ class DatabaseOperations:
             .join(CalendarLinks)
             .where(
                 and_(
-                    CalendarLinks.ttl_expires_at > datetime.now(UTC),
+                    CalendarLinks.ttl_expires_at > now,
                     CalendarLinks.last_accessed_at > threshold_date
                 )
             )
