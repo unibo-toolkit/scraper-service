@@ -1,6 +1,5 @@
 from app.models.generated import (
     CalendarCourses,
-    CalendarEvents,
     CalendarLinks,
     CalendarSubjects,
     CalendarSubscriptions,

@@ -13,7 +13,6 @@ from app.models.generated import (
     Classrooms,
     CalendarCourses,
     CalendarLinks,
-    CalendarEvents,
 )
 from app.utils.custom_logger import CustomLogger
 
@@ -221,12 +220,8 @@ class DatabaseOperations:
         from sqlalchemy.dialects.postgresql import insert
 
         new_hashes = {e["content_hash"] for e in events}
-        calendar_subq = select(CalendarEvents.timetable_event_id).distinct()
 
-        delete_conditions = [
-            TimetableEvents.subject_id.in_(subject_ids),
-            TimetableEvents.id.not_in(calendar_subq),
-        ]
+        delete_conditions = [TimetableEvents.subject_id.in_(subject_ids)]
         if new_hashes:
             delete_conditions.append(TimetableEvents.content_hash.not_in(new_hashes))
 
@@ -380,8 +375,6 @@ class DatabaseOperations:
         return result.scalars().all()
 
     async def cleanup_stale_events(self, stale_threshold: datetime) -> int:
-        calendar_events_subq = select(CalendarEvents.timetable_event_id).distinct()
-
         stale_curricula_subq = (
             select(Curricula.id)
             .where(
@@ -392,19 +385,27 @@ class DatabaseOperations:
             )
         )
 
-        stale_subjects_subq = (
-            select(Subjects.id)
-            .where(Subjects.curriculum_id.in_(stale_curricula_subq))
+        now = datetime.now(UTC)
+        protected_curricula_subq = (
+            select(CalendarCourses.curriculum_id)
+            .join(CalendarLinks, CalendarLinks.id == CalendarCourses.calendar_id)
+            .where(CalendarLinks.ttl_expires_at > now)
+            .distinct()
         )
 
-        stmt = delete(TimetableEvents).where(
-            and_(
-                TimetableEvents.id.not_in(calendar_events_subq),
-                TimetableEvents.subject_id.in_(stale_subjects_subq),
+        stale_subjects_subq = (
+            select(Subjects.id)
+            .where(
+                and_(
+                    Subjects.curriculum_id.in_(stale_curricula_subq),
+                    Subjects.curriculum_id.not_in(protected_curricula_subq),
+                )
             )
         )
 
-        result = await self.session.execute(stmt)
+        result = await self.session.execute(
+            delete(TimetableEvents).where(TimetableEvents.subject_id.in_(stale_subjects_subq))
+        )
         await self.session.flush()
         return result.rowcount
 
