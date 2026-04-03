@@ -9,6 +9,7 @@ from app.utils.database import get_db
 from app.core.database import DatabaseOperations
 from app.core.subjects import fetch_and_save_subjects
 from app.core import cache
+from app import config
 
 router = APIRouter()
 
@@ -63,6 +64,37 @@ def _format_event(event):
     }
 
 
+async def _refresh_stale_curricula(
+    subject_ids: List[UUID],
+    session: AsyncSession,
+    db_ops: DatabaseOperations,
+    logger: CustomLogger,
+) -> bool:
+    threshold = datetime.now(UTC) - timedelta(seconds=config.scraper.timetable_events_ttl)
+    curricula = await db_ops.get_curricula_by_subject_ids(subject_ids)
+
+    refreshed = False
+    for curriculum in curricula:
+        if curriculum.timetable_updated_at and curriculum.timetable_updated_at > threshold:
+            logger.info(
+                "timetable is fresh, skipping refresh",
+                curriculum_id=str(curriculum.id),
+                updated_at=curriculum.timetable_updated_at.isoformat(),
+            )
+            continue
+
+        logger.info(
+            "timetable is stale, refreshing",
+            curriculum_id=str(curriculum.id),
+            updated_at=curriculum.timetable_updated_at.isoformat() if curriculum.timetable_updated_at else None,
+        )
+        await fetch_and_save_subjects(session, curriculum.course, curriculum, logger)
+        await cache.delete_cached_subjects(f"subjects:{curriculum.id}", logger)
+        refreshed = True
+
+    return refreshed
+
+
 @router.get("/timetable")
 async def get_timetable(
     subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
@@ -72,6 +104,8 @@ async def get_timetable(
     logger.info("handling get timetable request", subject_count=len(subject_ids))
 
     db_ops = DatabaseOperations(session, logger)
+
+    await _refresh_stale_curricula(subject_ids, session, db_ops, logger)
 
     events = await db_ops.get_timetable_events_by_subject_ids(subject_ids)
 
@@ -148,6 +182,8 @@ async def preview_timetable(
     logger.info("handling preview timetable request", subject_count=len(subject_ids), page=page)
 
     db_ops = DatabaseOperations(session, logger)
+
+    await _refresh_stale_curricula(subject_ids, session, db_ops, logger)
 
     all_events = await db_ops.get_timetable_events_by_subject_ids(subject_ids)
 

@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import datetime, timedelta, UTC
-from sqlalchemy import select, delete, update, and_
+from sqlalchemy import select, delete, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +13,7 @@ from app.models.generated import (
     Classrooms,
     CalendarCourses,
     CalendarLinks,
+    CalendarEvents,
 )
 from app.utils.custom_logger import CustomLogger
 
@@ -53,7 +54,7 @@ class DatabaseOperations:
             stmt = update(Courses).where(Courses.id == existing.id).values(**update_data)
             await self.session.execute(stmt)
             await self.session.flush()
-            self.logger.debug("updated course", unibo_id=course_data["unibo_id"])
+            self.logger.info("updated course", unibo_id=course_data["unibo_id"])
 
             return existing
 
@@ -62,7 +63,7 @@ class DatabaseOperations:
         course = Courses(**course_data_clean)
         self.session.add(course)
         await self.session.flush()
-        self.logger.debug("created new course", unibo_id=course_data["unibo_id"])
+        self.logger.info("created new course", unibo_id=course_data["unibo_id"])
         return course
 
     async def upsert_curricula(self, course_id: UUID, curricula_list: List[Dict]):
@@ -190,7 +191,6 @@ class DatabaseOperations:
         if not active_keys:
             return
 
-        from sqlalchemy import or_
         conditions = []
         for title, module_code, professor in active_keys:
             cond = and_(
@@ -209,7 +209,7 @@ class DatabaseOperations:
                 and_(
                     Subjects.curriculum_id == curriculum_id,
                     Subjects.is_active == True,
-                    ~or_(*conditions)
+                    ~or_(*conditions),
                 )
             )
             .values(is_active=False)
@@ -357,6 +357,46 @@ class DatabaseOperations:
         )
         result = await self.session.execute(query)
         return result.scalars().all()
+
+    async def get_curricula_by_subject_ids(self, subject_ids: List[UUID]) -> List[Curricula]:
+        query = (
+            select(Curricula)
+            .join(Subjects, Subjects.curriculum_id == Curricula.id)
+            .where(Subjects.id.in_(subject_ids))
+            .options(selectinload(Curricula.course))
+            .distinct()
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def cleanup_stale_events(self, stale_threshold: datetime) -> int:
+        calendar_events_subq = select(CalendarEvents.timetable_event_id).distinct()
+
+        stale_curricula_subq = (
+            select(Curricula.id)
+            .where(
+                or_(
+                    Curricula.timetable_updated_at.is_(None),
+                    Curricula.timetable_updated_at < stale_threshold,
+                )
+            )
+        )
+
+        stale_subjects_subq = (
+            select(Subjects.id)
+            .where(Subjects.curriculum_id.in_(stale_curricula_subq))
+        )
+
+        stmt = delete(TimetableEvents).where(
+            and_(
+                TimetableEvents.id.not_in(calendar_events_subq),
+                TimetableEvents.subject_id.in_(stale_subjects_subq),
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount
 
     async def get_subject_by_id(self, subject_id: UUID) -> Optional[Subjects]:
         query = (

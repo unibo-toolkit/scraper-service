@@ -84,7 +84,7 @@ async def get_course_by_id(
 ):
     logger = CustomLogger("api:get_course_by_id")
     logger.with_items(course_id=str(course_id), lang=lang)
-    logger.debug("handling get course by id request")
+    logger.info("handling get course by id request")
 
     cached_data = await cache.get_cached_courses(logger=logger)
 

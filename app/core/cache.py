@@ -14,9 +14,9 @@ async def get_cached_courses(logger: Optional[CustomLogger] = None) -> Optional[
     try:
         data = await redis_client.redis.get("courses:full")
         if data:
-            logger.debug("cache hit for courses")
+            logger.info("cache hit for courses")
             return json.loads(data)
-        logger.debug("cache miss for courses")
+        logger.info("cache miss for courses")
     except Exception as e:
         logger.warning("failed to get cached courses", error=str(e))
     return None
@@ -70,7 +70,7 @@ async def set_cached_subjects(
         logger = CustomLogger("cache:subjects")
 
     try:
-        ttl = config.scraper.cache_timetable_ttl
+        ttl = config.scraper.cache_subjects_ttl
         await redis_client.redis.setex(
             cache_key,
             ttl,
