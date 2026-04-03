@@ -1,5 +1,6 @@
 import asyncio
 from typing import Dict, List, Optional
+from datetime import datetime, UTC, timedelta
 
 from app.models import Courses
 from app.utils.custom_logger import CustomLogger
@@ -144,12 +145,14 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
                         error_count += 1
                         continue
 
+                    old_hash = curriculum.timetable_hash
                     subjects = await fetch_and_save_subjects(session, course, curriculum, logger)
+                    await session.refresh(curriculum)
 
                     cache_key = f"subjects:{curriculum.id}"
                     await cache.set_cached_subjects(cache_key, subjects, logger)
 
-                    if curriculum.timetable_hash:
+                    if curriculum.timetable_hash != old_hash:
                         updated_count += 1
                     else:
                         skipped_count += 1
@@ -179,5 +182,31 @@ async def update_timetables(logger: Optional[CustomLogger] = None):
 
         except Exception as e:
             logger.error("failed to update timetables", error=str(e))
+            await session.rollback()
+            raise
+
+
+async def cleanup_stale_events(logger: Optional[CustomLogger] = None):
+    if not logger:
+        logger = CustomLogger("scheduler:cleanup_stale_events")
+
+    logger.info("starting stale events cleanup")
+
+    async with AsyncSessionLocal() as session:
+        try:
+            db_ops = DatabaseOperations(session, logger=logger)
+
+            stale_threshold = datetime.now(UTC) - timedelta(seconds=config.scraper.timetable_events_ttl * 2)
+
+            deleted = await db_ops.cleanup_stale_events(stale_threshold)
+            await session.commit()
+
+            if deleted > 0:
+                logger.info("deleted stale events", count=deleted, threshold=stale_threshold.isoformat())
+            else:
+                logger.info("no stale events to delete")
+
+        except Exception as e:
+            logger.error("failed to cleanup stale events", error=str(e))
             await session.rollback()
             raise

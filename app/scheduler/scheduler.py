@@ -4,7 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app import config
-from app.scheduler.jobs import update_courses_cache, update_timetables
+from app.scheduler.jobs import update_courses_cache, update_timetables, cleanup_stale_events
 from app.utils.custom_logger import CustomLogger
 
 logger = CustomLogger("Scheduler")
@@ -35,6 +35,18 @@ def setup_scheduler():
         name="Update Timetables",
         replace_existing=True,
         next_run_time=datetime.datetime.now(tz=scheduler.timezone) + datetime.timedelta(minutes=5)
+    )
+
+    scheduler.add_job(
+        cleanup_stale_events,
+        trigger=IntervalTrigger(
+            seconds=config.scheduler.cleanup_stale_events_interval_seconds,
+            timezone=config.scheduler.timezone
+        ),
+        id="cleanup_stale_events",
+        name="Cleanup Stale Events",
+        replace_existing=True,
+        next_run_time=datetime.datetime.now(tz=scheduler.timezone) + datetime.timedelta(minutes=10)
     )
 
     logger.info("scheduler configured with all jobs", timezone=config.scheduler.timezone)
