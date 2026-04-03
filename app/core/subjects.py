@@ -31,6 +31,9 @@ async def fetch_and_save_subjects(
             curriculum_id=str(curriculum.id),
         )
 
+        await db_ops.update_curriculum_timetable_hash(curriculum.id, new_hash)
+        await session.commit()
+
         existing_subjects = await db_ops.get_subjects_by_curriculum(curriculum.id, active_only=active_only)
         return [
             {
