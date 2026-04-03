@@ -130,10 +130,11 @@ async def refresh_timetable(
 @router.get("/preview")
 async def preview_timetable(
     subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
+    page: int = Query(0, description="Page offset in weeks from the target event week"),
     session: AsyncSession = Depends(get_db)
 ):
     logger = CustomLogger("api:preview_timetable")
-    logger.info("handling preview timetable request", subject_count=len(subject_ids))
+    logger.info("handling preview timetable request", subject_count=len(subject_ids), page=page)
 
     db_ops = DatabaseOperations(session, logger)
 
@@ -151,7 +152,7 @@ async def preview_timetable(
     now = datetime.now(UTC)
     target_event = _find_closest_event(all_events, now)
 
-    target_monday = _get_week_monday(target_event.start_datetime)
+    target_monday = _get_week_monday(target_event.start_datetime) + timedelta(weeks=page)
     from_date = target_monday - timedelta(weeks=1)
     to_date = target_monday + timedelta(weeks=2)
 
