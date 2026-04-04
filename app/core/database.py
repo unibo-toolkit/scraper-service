@@ -363,6 +363,15 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalars().all()
 
+    async def has_curriculum_events(self, curriculum_id: UUID) -> bool:
+        subjects_subq = select(Subjects.id).where(Subjects.curriculum_id == curriculum_id)
+        result = await self.session.execute(
+            select(TimetableEvents.id)
+            .where(TimetableEvents.subject_id.in_(subjects_subq))
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_curricula_by_subject_ids(self, subject_ids: List[UUID]) -> List[Curricula]:
         query = (
             select(Curricula)
