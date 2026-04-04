@@ -84,7 +84,7 @@ async def _refresh_stale_curricula(
             )
         else:
             has_events = await db_ops.has_curriculum_events(curriculum.id)
-            if not has_events:
+            if has_events:
                 logger.debug(
                     "timetable is fresh, skipping refresh",
                     curriculum_id=str(curriculum.id),
