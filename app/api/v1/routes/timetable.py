@@ -76,27 +76,24 @@ async def _refresh_stale_curricula(
     refreshed = False
     for curriculum in curricula:
         is_fresh = curriculum.timetable_updated_at and curriculum.timetable_updated_at > threshold
-        if not is_fresh:
-            logger.info(
-                "timetable is stale, refreshing",
-                curriculum_id=str(curriculum.id),
-                updated_at=curriculum.timetable_updated_at.isoformat() if curriculum.timetable_updated_at else None,
-            )
-        else:
-            has_events = await db_ops.has_curriculum_events(curriculum.id)
-            if has_events:
+
+        if is_fresh:
+            if await db_ops.has_curriculum_events(curriculum.id):
                 logger.debug(
                     "timetable is fresh, skipping refresh",
                     curriculum_id=str(curriculum.id),
                     updated_at=curriculum.timetable_updated_at.isoformat(),
                 )
                 continue
+            logger.info("timetable is fresh but no events in db, forcing refresh", curriculum_id=str(curriculum.id))
+        else:
             logger.info(
-                "timetable is fresh but no events in db, forcing refresh",
+                "timetable is stale, refreshing",
                 curriculum_id=str(curriculum.id),
+                updated_at=curriculum.timetable_updated_at.isoformat() if curriculum.timetable_updated_at else None,
             )
 
-        await fetch_and_save_subjects(session, curriculum.course, curriculum, logger)
+        await fetch_and_save_subjects(session, curriculum.course, curriculum, logger, force_update=bool(is_fresh))
         await cache.delete_cached_subjects(f"subjects:{curriculum.id}", logger)
         refreshed = True
 
