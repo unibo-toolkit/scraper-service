@@ -2,7 +2,7 @@ import asyncio
 
 import uvicorn
 
-from app import config, log, version
+from app import config, log
 from app.api.server import app
 from app.scheduler.scheduler import start_scheduler, stop_scheduler
 from app.scheduler.jobs import update_courses_cache
@@ -16,7 +16,7 @@ logger = CustomLogger("Main")
 
 
 async def setup():
-    logger.info("starting scraper-service", version=version, port=config.app.port)
+    logger.info("starting scraper-service", port=config.app.port)
 
     await init()
     await redis_client.connect()
