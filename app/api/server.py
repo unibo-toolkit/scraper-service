@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError, HTTPException
 
-from app import version
 from app.api.v1.routes import health, courses, subjects, timetable
 from app.api.middleware import (
     error_handler_middleware,
@@ -19,7 +18,6 @@ from app.api.exceptions import (
 app = FastAPI(
     title="Scraper Service",
     description="UniBo Scraper Service with hourly updates",
-    version=version,
     docs_url=None,
     redoc_url=None,
 )

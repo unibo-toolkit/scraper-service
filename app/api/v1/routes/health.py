@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 from sqlalchemy import text
 
-from app import version
 from app.utils.database import engine
 from app.utils.redis_client import redis_client
 
@@ -33,7 +32,6 @@ async def health_check():
 
     return {
         "status": overall_status,
-        "version": version,
         "database": db_status,
         "redis": redis_status,
         "details": {"service": "scraper-service"},
