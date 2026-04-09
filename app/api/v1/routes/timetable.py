@@ -198,6 +198,7 @@ async def preview_timetable(
             "from_date": None,
             "to_date": None,
             "total": 0,
+            "courses_events_count": 0,
             "target": None
         }
 
@@ -216,5 +217,6 @@ async def preview_timetable(
         "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(),
         "total": len(preview_events),
+        "courses_events_count": len(all_events),
         "target": _format_event(target_event) if target_event else None
     }
