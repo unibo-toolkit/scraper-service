@@ -119,7 +119,11 @@ jobs:
           git clone https://${{ secrets.INFRA_TOKEN_OWNER }}:${{ secrets.INFRA_TOKEN }}@github.com/unibo-toolkit/infra.git /tmp/infra
           cd /tmp/infra
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          sed -i "s|restartedAt: .*# ${{ env.SERVICE_NAME }}|restartedAt: \"$TIMESTAMP\" # ${{ env.SERVICE_NAME }}|" ${{ steps.infra.outputs.deployment }}
+          sed -i "s|restartedAt: .*|restartedAt: \"$TIMESTAMP\"|" ${{ steps.infra.outputs.deployment }}
+          if git diff --quiet; then
+            echo "ERROR: no changes made to ${{ steps.infra.outputs.deployment }} (missing 'restartedAt:' field?)"
+            exit 1
+          fi
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
