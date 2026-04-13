@@ -30,7 +30,13 @@ def setup() -> None:
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     logging.getLogger("apscheduler").setLevel(logging.ERROR)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    class HealthCheckFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return "/health" not in record.getMessage()
+
+    uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_access.addFilter(HealthCheckFilter())
 
     coloredlogs.DEFAULT_LEVEL_STYLES = {
         **coloredlogs.DEFAULT_LEVEL_STYLES,
