@@ -235,21 +235,39 @@ class DatabaseOperations:
             await self.session.flush()
 
     async def upsert_classroom(self, classroom_data: Dict) -> Classrooms:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from sqlalchemy import func
+
         address = classroom_data.get("address")
+
+        if address:
+            stmt = pg_insert(Classrooms).values(
+                name=classroom_data["name"],
+                address=address,
+                latitude=classroom_data.get("latitude"),
+                longitude=classroom_data.get("longitude"),
+            )
+            stmt = stmt.on_conflict_do_update(
+                constraint="classrooms_name_address_key",
+                set_={
+                    "latitude": func.coalesce(stmt.excluded.latitude, Classrooms.latitude),
+                    "longitude": func.coalesce(stmt.excluded.longitude, Classrooms.longitude),
+                },
+            )
+            await self.session.execute(stmt)
+            await self.session.flush()
+
+            query = select(Classrooms).where(
+                Classrooms.name == classroom_data["name"],
+                Classrooms.address == address,
+            )
+            return (await self.session.execute(query)).scalar_one()
 
         query = select(Classrooms).where(
             Classrooms.name == classroom_data["name"],
-            Classrooms.address.is_(None)
+            Classrooms.address.is_(None),
         )
-        if address:
-            query = select(Classrooms).where(
-                Classrooms.name == classroom_data["name"],
-                Classrooms.address == address
-            )
-
-        result = await self.session.execute(query)
-        existing = result.scalar_one_or_none()
-
+        existing = (await self.session.execute(query)).scalar_one_or_none()
         if existing:
             if classroom_data.get("latitude") is not None:
                 existing.latitude = classroom_data["latitude"]
