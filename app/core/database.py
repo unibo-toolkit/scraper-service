@@ -283,18 +283,12 @@ class DatabaseOperations:
 
     async def get_active_curricula(self) -> List[Curricula]:
         now = datetime.now(UTC)
-        threshold_date = now - timedelta(days=7)
 
         query = (
             select(Curricula)
             .join(CalendarCourses)
             .join(CalendarLinks)
-            .where(
-                and_(
-                    CalendarLinks.ttl_expires_at > now,
-                    CalendarLinks.last_accessed_at > threshold_date
-                )
-            )
+            .where(CalendarLinks.ttl_expires_at > now)
             .options(selectinload(Curricula.course))
             .distinct()
         )
