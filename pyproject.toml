@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "scraper-service"
-version = "0.1.0"
-description = "UniBo Scraper Service"
+version = "1.0.0"
+description = "UniPlanner Scraper Service"
 authors = ["UniBo Toolkit"]
 readme = "README.md"
 packages = [{include = "app"}]
@@ -25,7 +25,7 @@ httpx = "^0.28.0"
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 pytest-cov = "^6.0.0"
-black = "^24.10.0"
+black = "^26.3.1"
 isort = "^5.13.2"
 ruff = "^0.7.4"
 mypy = "^1.13.0"
