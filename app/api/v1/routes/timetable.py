@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import get_db
+from app.utils.title_formatter import format_event_title
 from app.core.database import DatabaseOperations
 from app.core.subjects import fetch_and_save_subjects
 from app.core import cache
@@ -40,11 +41,11 @@ def _find_closest_to_date(events: List, reference_date: datetime):
     return min(events, key=lambda e: abs((e.start_datetime - reference_date).total_seconds()))
 
 
-def _format_event(event):
+def _format_event(event, format_titles: bool = False):
     return {
         "id": str(event.id),
         "subject_id": str(event.subject_id),
-        "title": event.title,
+        "title": format_event_title(event.title) if format_titles else event.title,
         "start_datetime": event.start_datetime.isoformat(),
         "end_datetime": event.end_datetime.isoformat(),
         "is_remote": event.is_remote,
@@ -182,6 +183,7 @@ async def refresh_timetable(
 async def preview_timetable(
     subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
     page: int = Query(0, description="Page offset in weeks from the target event week"),
+    format_titles: bool = Query(False, description="Apply title formatting (preview)"),
     session: AsyncSession = Depends(get_db)
 ):
     logger = CustomLogger("api:preview_timetable")
@@ -214,10 +216,10 @@ async def preview_timetable(
     target_event = _find_closest_to_date(preview_events, page_monday)
 
     return {
-        "items": [_format_event(event) for event in preview_events],
+        "items": [_format_event(event, format_titles) for event in preview_events],
         "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(),
         "total": len(preview_events),
         "courses_events_count": len(all_events),
-        "target": _format_event(target_event) if target_event else None
+        "target": _format_event(target_event, format_titles) if target_event else None
     }
