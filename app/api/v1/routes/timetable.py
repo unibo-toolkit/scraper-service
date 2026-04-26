@@ -101,8 +101,7 @@ async def _refresh_stale_curricula(
     return refreshed
 
 
-@router.get("/timetable")
-@router.deprecated("Use preview only", category=DeprecationWarning)
+@router.get("/timetable", deprecated=True)
 async def get_timetable(
     subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
     session: AsyncSession = Depends(get_db)
