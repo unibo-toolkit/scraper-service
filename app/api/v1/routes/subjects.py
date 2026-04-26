@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import get_db
+from app.utils.title_formatter import format_event_title
 from app.core import cache
 from app.core.subjects import fetch_and_save_subjects
 from app.core.database import DatabaseOperations
@@ -19,6 +20,7 @@ async def get_course_subjects(
     course_id: UUID,
     curriculum_id: UUID = Query(..., description="Curriculum UUID"),
     include_inactive: bool = Query(False, description="Include inactive subjects"),
+    format_titles: bool = Query(False, description="Apply title formatting (preview)"),
     session: AsyncSession = Depends(get_db)
 ):
     logger = CustomLogger("api:get_course_subjects")
@@ -47,6 +49,8 @@ async def get_course_subjects(
             cached = await cache.get_cached_subjects(cache_key, logger)
             if cached:
                 logger.debug("returning cached subjects", curriculum_id=str(curriculum.id))
+                if format_titles:
+                    cached = [{**s, "title": format_event_title(s["title"])} for s in cached]
                 return {"items": cached}
         else:
             logger.info(
@@ -65,5 +69,8 @@ async def get_course_subjects(
 
     if not include_inactive:
         await cache.set_cached_subjects(cache_key, subjects, logger)
+
+    if format_titles:
+        subjects = [{**s, "title": format_event_title(s["title"])} for s in subjects]
 
     return {"items": subjects}
