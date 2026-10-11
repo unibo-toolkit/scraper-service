@@ -3,73 +3,55 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class LogItem:
+    """
+    One key=value pair appended to a log line.
+
+    Attributes:
+        name: Key as written in the line.
+        value: Value, already stringified.
+    """
+
     name: str
     value: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'{self.name}="{self.value}"'
-
-
-@dataclass
-class MultiItem:
-    items: Dict[str, str]
-
-    @property
-    def all(self) -> List[LogItem]:
-        return [LogItem(name, value) for name, value in self.items.items()]
 
 
 class CustomLogger:
     def __init__(self, name: str, **items: Any):
         self.name = name
         self.logger = logging.getLogger(name)
-        self.items: List[LogItem] = []
-        if items:
-            self.items = self.__transform_items(items).all
+        self.items: List[LogItem] = _as_items(items)
 
-    def __send_message(self, msg: str, level: int, items: List[LogItem]) -> None:
-        log = (
-            'msg="' + msg + '"' + (" " + " ".join(map(str, items)) if items else "")
-        )
-        self.logger.log(level, log)
-
-    @staticmethod
-    def __transform_items(items: Dict[str, Any]) -> MultiItem:
-        return MultiItem({key: str(value) for key, value in items.items()})
-
-    def info(self, msg: str, **items: Any) -> None:
-        self.__send_message(
-            msg, logging.INFO, self.items + self.__transform_items(items).all
-        )
+    def log(self, level: int, msg: str, **items: Any) -> None:
+        parts = self.items + _as_items(items)
+        suffix = " " + " ".join(map(str, parts)) if parts else ""
+        self.logger.log(level, f'msg="{msg}"{suffix}')
 
     def debug(self, msg: str, **items: Any) -> None:
-        self.__send_message(
-            msg, logging.DEBUG, self.items + self.__transform_items(items).all
-        )
+        self.log(logging.DEBUG, msg, **items)
+
+    def info(self, msg: str, **items: Any) -> None:
+        self.log(logging.INFO, msg, **items)
 
     def warning(self, msg: str, **items: Any) -> None:
-        self.__send_message(
-            msg, logging.WARNING, self.items + self.__transform_items(items).all
-        )
+        self.log(logging.WARNING, msg, **items)
 
     def error(self, msg: str, **items: Any) -> None:
-        self.__send_message(
-            msg, logging.ERROR, self.items + self.__transform_items(items).all
-        )
+        self.log(logging.ERROR, msg, **items)
 
     def critical(self, msg: str, **items: Any) -> None:
-        self.__send_message(
-            msg, logging.CRITICAL, self.items + self.__transform_items(items).all
-        )
+        self.log(logging.CRITICAL, msg, **items)
 
     def with_items(self, **items: Any) -> None:
-        self.items.extend(self.__transform_items(items).all)
+        self.items.extend(_as_items(items))
 
     def clear(self) -> None:
         self.items.clear()
 
-    def __del__(self):
-        if hasattr(self, 'items'):
-            del self.items
+
+def _as_items(items: Dict[str, Any]) -> List[LogItem]:
+    return [LogItem(name, str(value)) for name, value in items.items()]

@@ -1,212 +1,43 @@
-import asyncio
-from typing import Dict, List, Optional, Sequence
-from datetime import datetime, UTC, timedelta
+from contextlib import asynccontextmanager
+from typing import Optional
 
-from app.models import Courses
+from app.core.catalog import CourseCatalog
+from app.core.timetable import TimetableSync
 from app.utils.custom_logger import CustomLogger
-from app.utils.database import AsyncSessionLocal, AsyncSession
-from app.core import scraper, cache
-from app.core.database import DatabaseOperations
-from app.core.subjects import fetch_and_save_subjects
-from app import config
+from app.utils.database import AsyncSessionLocal
 
 
 async def update_courses_cache(logger: Optional[CustomLogger] = None):
-    if not logger:
-        logger = CustomLogger("scheduler:update_courses_cache")
-
-    logger.info("starting courses cache update")
-
-    async with AsyncSessionLocal() as session:
-        try:
-            db_op = DatabaseOperations(session, logger=logger)
-
-            courses_it = await scraper.fetch_courses_italian(logger=logger)
-
-            english_titles = await scraper.fetch_courses_english(logger=logger)
-
-            await __resolve_scraper_results(courses_it, english_titles, db_op, session, logger=logger)
-
-            current_unibo_ids = [course["unibo_id"] for course in courses_it]
-            marked_inactive = await db_op.mark_inactive_courses(current_unibo_ids)
-            if marked_inactive > 0:
-                logger.info("marked inactive courses", count=marked_inactive)
-
-            courses: Sequence[Courses] = await db_op.get_all_courses(with_curricula=True)
-
-            formated_courses = __format_courses_for_cache(list(courses))
-            await cache.set_cached_courses(formated_courses, logger=logger)
-            logger.info("cashing courses completed")
-        except Exception as e:
-            logger.error("failed to update courses cache", error=str(e))
-            raise
+    async with _job("update_courses_cache", logger) as (session, log):
+        courses = await CourseCatalog(session, log).refresh()
+        log.info("courses cache updated", count=len(courses))
 
 
 async def update_timetables(logger: Optional[CustomLogger] = None):
-    if not logger:
-        logger = CustomLogger("scheduler:update_timetables")
-
-    logger.info("starting timetables update")
-
-    async with AsyncSessionLocal() as session:
-        try:
-            db_ops = DatabaseOperations(session, logger=logger)
-
-            active_curricula = await db_ops.get_active_curricula()
-            logger.info("found active curricula", count=len(active_curricula))
-
-            if not active_curricula:
-                logger.info("no active curricula to update")
-                return
-
-            updated_count = 0
-            skipped_count = 0
-            error_count = 0
-
-            for idx, curriculum in enumerate(active_curricula):
-                try:
-                    logger.debug(
-                        "processing curriculum",
-                        curriculum_id=str(curriculum.id),
-                        code=curriculum.code,
-                    )
-
-                    course = curriculum.course
-
-                    if not course or not course.url:
-                        logger.warning(
-                            "no course url for curriculum", curriculum_id=str(curriculum.id)
-                        )
-                        error_count += 1
-                        continue
-
-                    old_hash = curriculum.timetable_hash
-                    subjects = await fetch_and_save_subjects(session, course, curriculum, logger)
-                    await session.refresh(curriculum)
-
-                    cache_key = f"subjects:{curriculum.id}"
-                    await cache.set_cached_subjects(cache_key, subjects, logger)
-
-                    if curriculum.timetable_hash != old_hash:
-                        updated_count += 1
-                    else:
-                        skipped_count += 1
-
-                except Exception as e:
-                    logger.error(
-                        "failed to update timetable", curriculum_id=str(curriculum.id), error=str(e)
-                    )
-                    error_count += 1
-                    continue
-
-                if idx < len(active_curricula) - 1:
-                    await asyncio.sleep(config.scraper.delay_between_timetable_requests)
-
-            deleted_classrooms = await db_ops.cleanup_unused_classrooms()
-            if deleted_classrooms > 0:
-                logger.info("deleted unused classrooms", count=deleted_classrooms)
-
-            await session.commit()
-
-            logger.info(
-                "timetables update completed",
-                updated=updated_count,
-                skipped=skipped_count,
-                errors=error_count,
-            )
-
-        except Exception as e:
-            logger.error("failed to update timetables", error=str(e))
-            await session.rollback()
-            raise
+    async with _job("update_timetables", logger) as (session, log):
+        report = await TimetableSync(session, log).sync_subscribed()
+        log.info(
+            "timetables update completed",
+            updated=report.updated,
+            skipped=report.skipped,
+            errors=report.errors,
+        )
 
 
 async def cleanup_stale_events(logger: Optional[CustomLogger] = None):
-    if not logger:
-        logger = CustomLogger("scheduler:cleanup_stale_events")
+    async with _job("cleanup_stale_events", logger) as (session, log):
+        deleted = await TimetableSync(session, log).cleanup_stale_events()
+        log.info("stale events cleanup completed", deleted=deleted)
 
-    logger.info("starting stale events cleanup")
+
+@asynccontextmanager
+async def _job(name: str, logger: Optional[CustomLogger]):
+    log = logger or CustomLogger(f"scheduler:{name}")
+    log.info("job started", job=name)
 
     async with AsyncSessionLocal() as session:
         try:
-            db_ops = DatabaseOperations(session, logger=logger)
-
-            stale_threshold = datetime.now(UTC) - timedelta(seconds=config.scraper.timetable_events_ttl * 2)
-
-            deleted = await db_ops.cleanup_stale_events(stale_threshold)
-            await session.commit()
-
-            if deleted > 0:
-                logger.info("deleted stale events", count=deleted, threshold=stale_threshold.isoformat())
-            else:
-                logger.info("no stale events to delete")
-
+            yield session, log
         except Exception as e:
-            logger.error("failed to cleanup stale events", error=str(e))
-            await session.rollback()
+            log.error("job failed", job=name, error=str(e))
             raise
-
-
-async def __resolve_scraper_results(
-    courses_it: List[Dict],
-    english_titles: Dict,
-    db: DatabaseOperations,
-    session: AsyncSession,
-    logger: Optional[CustomLogger] = None,
-):
-    if not logger:
-        logger = CustomLogger("resolve_results")
-
-    for course_data in courses_it:
-        course_data["title_en"] = english_titles.get(course_data["unibo_id"], None)
-
-        course = await db.upsert_course(course_data)
-
-        if course_data.get("curricula"):
-            curricula_to_save = [
-                {"code": curr["code"], "label": curr["label"], "academic_year": year}
-                for year in range(1, course_data["duration_years"] + 1)
-                for curr in course_data["curricula"]
-            ]
-            await db.upsert_curricula(course.id, curricula_to_save)
-
-            active_codes = [
-                (curr["code"], year)
-                for year in range(1, course_data["duration_years"] + 1)
-                for curr in course_data["curricula"]
-            ]
-            await db.mark_inactive_curricula(course.id, active_codes)
-
-    await session.commit()
-    logger.debug("resolved and saved courses", count=len(courses_it))
-
-
-def __format_courses_for_cache(courses: List[Courses]) -> List[Dict]:
-    formatted_courses = []
-    for course in courses:
-        formatted_course = {
-            "id": str(course.id),
-            "unibo_id": course.unibo_id,
-            "title_it": course.title_it,
-            "title_en": course.title_en,
-            "course_type": course.course_type,
-            "campus": course.campus,
-            "languages": course.languages or [],
-            "duration_years": course.duration_years,
-            "url": course.url,
-            "area": course.area,
-            "curricula": sorted(
-                [
-                    {
-                        "id": str(curr.id),
-                        "code": curr.code,
-                        "label": curr.label,
-                        "academic_year": curr.academic_year,
-                    }
-                    for curr in (course.curricula or []) if curr.is_active
-                ],
-                key=lambda x: (x.get("academic_year", 0)),
-            ),
-        }
-        formatted_courses.append(formatted_course)
-    return formatted_courses

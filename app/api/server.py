@@ -1,19 +1,15 @@
 from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.exceptions import HTTPException, RequestValidationError
 
-from app.api.v1.routes import health, courses, subjects, timetable
+from app.api.exceptions import AppError
 from app.api.middleware import (
-    error_handler_middleware,
-    validation_exception_handler,
-    http_exception_handler,
+    app_exception_handler,
     custom_404_handler,
-    custom_exception_handler
+    error_handler_middleware,
+    http_exception_handler,
+    validation_exception_handler,
 )
-from app.api.exceptions import (
-    ValidationError,
-    NotFoundError,
-    ServiceUnavailableError
-)
+from app.api.v1.routes import courses, health, subjects, timetable
 
 app = FastAPI(
     title="Scraper Service",
@@ -27,11 +23,12 @@ app.middleware("http")(error_handler_middleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(404, custom_404_handler)
-app.add_exception_handler(ValidationError, custom_exception_handler)
-app.add_exception_handler(NotFoundError, custom_exception_handler)
-app.add_exception_handler(ServiceUnavailableError, custom_exception_handler)
+app.add_exception_handler(AppError, app_exception_handler)
 
-app.include_router(health.router, prefix="/api/v1", tags=["health"])
-app.include_router(courses.router, prefix="/api/v1", tags=["courses"])
-app.include_router(subjects.router, prefix="/api/v1", tags=["subjects"])
-app.include_router(timetable.router, prefix="/api/v1", tags=["timetable"])
+for router, tag in (
+    (health.router, "health"),
+    (courses.router, "courses"),
+    (subjects.router, "subjects"),
+    (timetable.router, "timetable"),
+):
+    app.include_router(router, prefix="/api/v1", tags=[tag])
