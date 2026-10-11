@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 from datetime import datetime, UTC, timedelta
 
 from app.models import Courses
@@ -11,71 +11,6 @@ from app.core.subjects import fetch_and_save_subjects
 from app import config
 
 
-async def _resolve_results(
-    courses_it: List[Dict],
-    english_titles: Dict,
-    db: DatabaseOperations,
-    session: AsyncSession,
-    logger: Optional[CustomLogger] = None,
-):
-    if not logger:
-        logger = CustomLogger("resolve_results")
-
-    for course_data in courses_it:
-        course_data["title_en"] = english_titles.get(course_data["unibo_id"], None)
-
-        course = await db.upsert_course(course_data)
-
-        if course_data.get("curricula"):
-            curricula_to_save = [
-                {"code": curr["code"], "label": curr["label"], "academic_year": year}
-                for year in range(1, course_data["duration_years"] + 1)
-                for curr in course_data["curricula"]
-            ]
-            await db.upsert_curricula(course.id, curricula_to_save)
-
-            active_codes = [
-                (curr["code"], year)
-                for year in range(1, course_data["duration_years"] + 1)
-                for curr in course_data["curricula"]
-            ]
-            await db.mark_inactive_curricula(course.id, active_codes)
-
-    await session.commit()
-    logger.debug("resolved and saved courses", count=len(courses_it))
-
-
-def _format_courses_for_cache(courses: List[Courses]) -> List[Dict]:
-    formatted_courses = []
-    for course in courses:
-        formatted_course = {
-            "id": str(course.id),
-            "unibo_id": course.unibo_id,
-            "title_it": course.title_it,
-            "title_en": course.title_en,
-            "course_type": course.course_type,
-            "campus": course.campus,
-            "languages": course.languages or [],
-            "duration_years": course.duration_years,
-            "url": course.url,
-            "area": course.area,
-            "curricula": sorted(
-                [
-                    {
-                        "id": str(curr.id),
-                        "code": curr.code,
-                        "label": curr.label,
-                        "academic_year": curr.academic_year,
-                    }
-                    for curr in (course.curricula or []) if curr.is_active
-                ],
-                key=lambda x: (x.get("academic_year", 0)),
-            ),
-        }
-        formatted_courses.append(formatted_course)
-    return formatted_courses
-
-
 async def update_courses_cache(logger: Optional[CustomLogger] = None):
     if not logger:
         logger = CustomLogger("scheduler:update_courses_cache")
@@ -84,22 +19,22 @@ async def update_courses_cache(logger: Optional[CustomLogger] = None):
 
     async with AsyncSessionLocal() as session:
         try:
-            db = DatabaseOperations(session, logger=logger)
+            db_op = DatabaseOperations(session, logger=logger)
 
             courses_it = await scraper.fetch_courses_italian(logger=logger)
 
             english_titles = await scraper.fetch_courses_english(logger=logger)
 
-            await _resolve_results(courses_it, english_titles, db, session, logger=logger)
+            await __resolve_scraper_results(courses_it, english_titles, db_op, session, logger=logger)
 
-            current_unibo_ids = [c["unibo_id"] for c in courses_it]
-            marked_inactive = await db.mark_inactive_courses(current_unibo_ids)
+            current_unibo_ids = [course["unibo_id"] for course in courses_it]
+            marked_inactive = await db_op.mark_inactive_courses(current_unibo_ids)
             if marked_inactive > 0:
                 logger.info("marked inactive courses", count=marked_inactive)
 
-            courses = await db.get_all_courses(with_curricula=True)
+            courses: Sequence[Courses] = await db_op.get_all_courses(with_curricula=True)
 
-            formated_courses = _format_courses_for_cache(courses)
+            formated_courses = __format_courses_for_cache(list(courses))
             await cache.set_cached_courses(formated_courses, logger=logger)
             logger.info("cashing courses completed")
         except Exception as e:
@@ -210,3 +145,68 @@ async def cleanup_stale_events(logger: Optional[CustomLogger] = None):
             logger.error("failed to cleanup stale events", error=str(e))
             await session.rollback()
             raise
+
+
+async def __resolve_scraper_results(
+    courses_it: List[Dict],
+    english_titles: Dict,
+    db: DatabaseOperations,
+    session: AsyncSession,
+    logger: Optional[CustomLogger] = None,
+):
+    if not logger:
+        logger = CustomLogger("resolve_results")
+
+    for course_data in courses_it:
+        course_data["title_en"] = english_titles.get(course_data["unibo_id"], None)
+
+        course = await db.upsert_course(course_data)
+
+        if course_data.get("curricula"):
+            curricula_to_save = [
+                {"code": curr["code"], "label": curr["label"], "academic_year": year}
+                for year in range(1, course_data["duration_years"] + 1)
+                for curr in course_data["curricula"]
+            ]
+            await db.upsert_curricula(course.id, curricula_to_save)
+
+            active_codes = [
+                (curr["code"], year)
+                for year in range(1, course_data["duration_years"] + 1)
+                for curr in course_data["curricula"]
+            ]
+            await db.mark_inactive_curricula(course.id, active_codes)
+
+    await session.commit()
+    logger.debug("resolved and saved courses", count=len(courses_it))
+
+
+def __format_courses_for_cache(courses: List[Courses]) -> List[Dict]:
+    formatted_courses = []
+    for course in courses:
+        formatted_course = {
+            "id": str(course.id),
+            "unibo_id": course.unibo_id,
+            "title_it": course.title_it,
+            "title_en": course.title_en,
+            "course_type": course.course_type,
+            "campus": course.campus,
+            "languages": course.languages or [],
+            "duration_years": course.duration_years,
+            "url": course.url,
+            "area": course.area,
+            "curricula": sorted(
+                [
+                    {
+                        "id": str(curr.id),
+                        "code": curr.code,
+                        "label": curr.label,
+                        "academic_year": curr.academic_year,
+                    }
+                    for curr in (course.curricula or []) if curr.is_active
+                ],
+                key=lambda x: (x.get("academic_year", 0)),
+            ),
+        }
+        formatted_courses.append(formatted_course)
+    return formatted_courses

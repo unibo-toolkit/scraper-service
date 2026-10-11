@@ -1,9 +1,11 @@
-from typing import List, Optional, Dict
+from collections.abc import Sequence
+from typing import List, Optional, Dict, Tuple
 from uuid import UUID
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 from sqlalchemy import select, delete, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from unibo_toolkit.models import Classroom as UniBoClassroom, TimetableEvent as UniBoTimetableEvent
 
 from app.models.generated import (
     Courses,
@@ -23,7 +25,7 @@ class DatabaseOperations:
         self.session = session
         self.logger = logger or CustomLogger("database")
 
-    async def get_all_courses(self, with_curricula: bool = False, active_only: bool = True) -> List[Courses]:
+    async def get_all_courses(self, with_curricula: bool = False, active_only: bool = True) -> Sequence[Courses]:
         query = select(Courses)
         if active_only:
             query = query.where(Courses.is_active == True)
@@ -133,14 +135,14 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_subjects_by_curriculum(self, curriculum_id: UUID, active_only: bool = True) -> List[Subjects]:
+    async def get_subjects_by_curriculum(self, curriculum_id: UUID, active_only: bool = True) -> Sequence[Subjects]:
         query = select(Subjects).where(Subjects.curriculum_id == curriculum_id)
         if active_only:
             query = query.where(Subjects.is_active == True)
         result = await self.session.execute(query)
         return result.scalars().all()
 
-    async def get_subject_by_key(
+    async def __get_subject_by_key(
         self,
         curriculum_id: UUID,
         title: str,
@@ -158,26 +160,33 @@ class DatabaseOperations:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def upsert_subjects(self, subjects: List[Dict]):
-        for subject_data in subjects:
-            existing = await self.get_subject_by_key(
-                subject_data["curriculum_id"],
-                subject_data["title"],
-                subject_data.get("module_code"),
-                subject_data.get("professor")
+    async def upsert_subjects(self, curriculum_id: UUID, events: List[UniBoTimetableEvent]):
+        for event in events:
+            existing = await self.__get_subject_by_key(
+                curriculum_id=curriculum_id,
+                title=event.title,
+                module_code=event.module_code,
+                professor=event.professor
             )
 
             if existing:
                 stmt = update(Subjects).where(Subjects.id == existing.id).values(
-                    credits=subject_data.get("credits"),
-                    group_id=subject_data.get("group_id"),
+                    credits=event.credits,
+                    group_id=event.group_id,
                     is_active=True,
                     updated_at=datetime.now(UTC)
                 )
                 await self.session.execute(stmt)
             else:
-                subject_data["is_active"] = True
-                subject = Subjects(**subject_data)
+                subject = Subjects(
+                    curriculum_id=curriculum_id,
+                    title=event.title,
+                    module_code=event.module_code,
+                    credits=event.credits,
+                    professor=event.professor,
+                    group_id=event.group_id,
+                    is_active=True
+                )
                 self.session.add(subject)
 
         await self.session.flush()
@@ -185,7 +194,7 @@ class DatabaseOperations:
     async def mark_inactive_subjects(
         self,
         curriculum_id: UUID,
-        active_keys: List[tuple]
+        active_keys: List[Tuple]
     ):
         if not active_keys:
             return
@@ -216,10 +225,10 @@ class DatabaseOperations:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def sync_timetable_events(self, subject_ids: List[UUID], events: List[Dict]):
+    async def sync_timetable_events(self, subject_ids: List[UUID], events: List[Dict]):  # TODO edit function for implement new hash
         from sqlalchemy.dialects.postgresql import insert
 
-        new_hashes = {e["content_hash"] for e in events}
+        new_hashes = {e.get("content_hash") for e in events}
 
         delete_conditions = [TimetableEvents.subject_id.in_(subject_ids)]
         if new_hashes:
@@ -234,18 +243,18 @@ class DatabaseOperations:
             await self.session.execute(stmt)
             await self.session.flush()
 
-    async def upsert_classroom(self, classroom_data: Dict) -> Classrooms:
+    async def upsert_classroom(self, classroom_data: UniBoClassroom) -> Classrooms:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
         from sqlalchemy import func
 
-        address = classroom_data.get("address")
+        address = classroom_data.address
 
         if address:
             stmt = pg_insert(Classrooms).values(
-                name=classroom_data["name"],
+                name=classroom_data.title,
                 address=address,
-                latitude=classroom_data.get("latitude"),
-                longitude=classroom_data.get("longitude"),
+                latitude=classroom_data.latitude,
+                longitude=classroom_data.longitude,
             )
             stmt = stmt.on_conflict_do_update(
                 constraint="classrooms_name_address_key",
@@ -258,30 +267,35 @@ class DatabaseOperations:
             await self.session.flush()
 
             query = select(Classrooms).where(
-                Classrooms.name == classroom_data["name"],
+                Classrooms.name == classroom_data.title,
                 Classrooms.address == address,
             )
             return (await self.session.execute(query)).scalar_one()
 
         query = select(Classrooms).where(
-            Classrooms.name == classroom_data["name"],
+            Classrooms.name == classroom_data.title,
             Classrooms.address.is_(None),
         )
         existing = (await self.session.execute(query)).scalar_one_or_none()
         if existing:
-            if classroom_data.get("latitude") is not None:
-                existing.latitude = classroom_data["latitude"]
-            if classroom_data.get("longitude") is not None:
-                existing.longitude = classroom_data["longitude"]
+            if classroom_data.latitude is not None:
+                existing.latitude = classroom_data.latitude
+            if classroom_data.longitude is not None:
+                existing.longitude = classroom_data.longitude
             await self.session.flush()
             return existing
 
-        classroom = Classrooms(**classroom_data)
+        classroom = Classrooms(
+            name=classroom_data.title,
+            address=classroom_data.address,
+            latitude=classroom_data.latitude,
+            longitude=classroom_data.longitude,
+        )
         self.session.add(classroom)
         await self.session.flush()
         return classroom
 
-    async def get_active_curricula(self) -> List[Curricula]:
+    async def get_active_curricula(self) -> Sequence[Curricula]:
         now = datetime.now(UTC)
 
         query = (
@@ -358,7 +372,7 @@ class DatabaseOperations:
         subject_ids: List[UUID],
         from_date: Optional[datetime] = None,
         to_date: Optional[datetime] = None
-    ) -> List[TimetableEvents]:
+    ) -> Sequence[TimetableEvents]:
         conditions = [TimetableEvents.subject_id.in_(subject_ids)]
 
         if from_date is not None:
@@ -384,7 +398,7 @@ class DatabaseOperations:
         )
         return result.scalar_one_or_none() is not None
 
-    async def get_curricula_by_subject_ids(self, subject_ids: List[UUID]) -> List[Curricula]:
+    async def get_curricula_by_subject_ids(self, subject_ids: List[UUID]) -> Sequence[Curricula]:
         query = (
             select(Curricula)
             .join(Subjects, Subjects.curriculum_id == Curricula.id)

@@ -1,51 +1,12 @@
 import asyncio
 from typing import List, Dict, Optional
-from zoneinfo import ZoneInfo
 from unibo_toolkit import CourseScraper, HTTPClient, BaseCourse
 from unibo_toolkit.scrapers import TimetableScraper
 from unibo_toolkit.enums import Language
-from unibo_toolkit.models import Curriculum
+from unibo_toolkit.models import Curriculum, CurriculumTimetable
 
 from app.utils.custom_logger import CustomLogger
 from app import config
-
-ROME_TZ = ZoneInfo("Europe/Rome")
-
-
-async def _fetch_sites_urls(course: BaseCourse, client: HTTPClient, logger: Optional[CustomLogger] = None):
-    if not logger:
-        logger = CustomLogger("scraper:fetch_sites")
-
-    for attempt in range(3):
-        try:
-            await course.fetch_site_url(client)
-            return
-        except ValueError as e:
-            logger.warning("failed to fetch site url", course_id=course.course_id, attempt=attempt + 1, error=str(e))
-
-    logger.error("failed to fetch site url after retries", course_id=course.course_id, retries=3)
-
-
-def _get_course_dict(course: BaseCourse) -> Dict:
-    return {
-        "unibo_id": course.course_id,
-        "title_it": course.title,
-        "title_en": None,
-        "course_type": _map_course_type(course.get_course_type().value),
-        "campus": course.campus.value if course.campus else None,
-        "languages": [lang.value for lang in course.languages] if course.languages else [],
-        "duration_years": course.duration_years,
-        "url": course.course_site_url,
-        "area": _extract_area(course.area),
-        "curricula": (
-            [
-                {"code": curr.code, "label": curr.label}
-                for curr in (course.get_available_curricula() or [])
-            ]
-            if course.get_available_curricula()
-            else []
-        ),
-    }
 
 
 async def fetch_courses_italian(logger: Optional[CustomLogger] = None) -> List[Dict]:
@@ -98,8 +59,8 @@ async def fetch_courses_english(logger: Optional[CustomLogger] = None) -> Dict[i
 
 async def fetch_timetable(
     course_site_url: str, curriculum_code: str, curriculum_label: str, academic_year: int
-) -> Dict:
-    logger = CustomLogger("scraper:timetable")
+) -> CurriculumTimetable:  # TODO replace with dataclass
+    logger = CustomLogger("scraper:fetch_timetable")
     logger.info("fetching timetable", curriculum_code=curriculum_code, year=academic_year)
 
     curriculum = Curriculum(code=curriculum_code, label=curriculum_label)
@@ -109,9 +70,42 @@ async def fetch_timetable(
             course_site_url=course_site_url, curriculum=curriculum, academic_year=academic_year
         )
 
+    return timetable
+
+
+async def _fetch_sites_urls(course: BaseCourse, client: HTTPClient, logger: Optional[CustomLogger] = None):
+    if not logger:
+        logger = CustomLogger("scraper:fetch_sites_urls")
+
+    for attempt in range(3):
+        try:
+            await course.fetch_site_url(client)
+            return
+        except ValueError as e:
+            logger.warning("failed to fetch site url", course_id=course.course_id, attempt=attempt + 1, error=str(e))
+
+    logger.error("failed to fetch site url after retries", course_id=course.course_id, retries=3)
+
+
+def _get_course_dict(course: BaseCourse) -> Dict:
     return {
-        "events": [_parse_event(e) for e in timetable.events],
-        "content_hash": timetable.content_hash,
+        "unibo_id": course.course_id,
+        "title_it": course.title,
+        "title_en": None,
+        "course_type": _map_course_type(course.get_course_type().value),
+        "campus": course.campus.value if course.campus else None,
+        "languages": [lang.value for lang in course.languages] if course.languages else [],
+        "duration_years": course.duration_years,
+        "url": course.course_site_url,
+        "area": _extract_area(course.area),
+        "curricula": (
+            [
+                {"code": curr.code, "label": curr.label}
+                for curr in (course.get_available_curricula() or [])
+            ]
+            if course.get_available_curricula()
+            else []
+        ),
     }
 
 
@@ -126,7 +120,7 @@ def _map_course_type(course_type: str) -> str:
     return mapping.get(course_type, "Master")
 
 
-def _extract_area(area) -> str:
+def _extract_area(area) -> Optional[str]:
     if not area:
         return None
 
@@ -136,33 +130,3 @@ def _extract_area(area) -> str:
         return area.value
 
     return str(area)
-
-
-def _localize_rome(dt):
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=ROME_TZ)
-    return dt
-
-
-def _parse_event(event) -> Dict:
-    classroom = event.primary_classroom if hasattr(event, 'primary_classroom') else None
-
-    return {
-        "title": event.title,
-        "start_time": _localize_rome(event.start),
-        "end_time": _localize_rome(event.end),
-        "location": classroom.title if classroom else None,
-        "address": classroom.address if classroom else None,
-        "latitude": classroom.latitude if classroom else None,
-        "longitude": classroom.longitude if classroom else None,
-        "professor": event.professor,
-        "event_type": event.event_type.value if hasattr(event, 'event_type') and event.event_type else None,
-        "cfu": event.credits if hasattr(event, 'credits') else None,
-        "is_remote": event.is_remote if hasattr(event, 'is_remote') else False,
-        "teams_link": event.teams_link if hasattr(event, 'teams_link') else None,
-        "notes": event.notes if hasattr(event, 'notes') else None,
-        "group_id": event.extract_group_id(event.cod_sdoppiamento) if hasattr(event, 'extract_group_id') and hasattr(event, 'cod_sdoppiamento') else None,
-        "module_code": event.module_code if hasattr(event, 'module_code') else None,
-    }
