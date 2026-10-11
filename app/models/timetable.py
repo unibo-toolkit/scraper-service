@@ -1,0 +1,224 @@
+import hashlib
+import json
+from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal
+from typing import Dict, List, Optional, Sequence, Tuple
+from uuid import UUID
+
+SubjectKey = Tuple[str, Optional[str], Optional[str]]
+ClassroomKey = Tuple[str, Optional[str]]
+
+
+@dataclass(frozen=True, slots=True)
+class Classroom:
+    """
+    A teaching location as the timetable feed reports it.
+
+    Attributes:
+        name: Room title, e.g. "Aula 2.1". The only thing identifying a room,
+            so nameless ones are never stored.
+        address: Street address. Missing for a part of the rooms, which is why
+            the unique constraint on (name, address) does not cover every row.
+        latitude: Latitude, None when the feed carries no coordinates.
+        longitude: Longitude, None when the feed carries no coordinates.
+        id: Database id. None for a room that has not been stored yet.
+    """
+
+    name: str
+    address: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    id: Optional[UUID] = None
+
+    @property
+    def key(self) -> ClassroomKey:
+        """
+        Natural key of the room, matching the classrooms_name_address_key
+        constraint.
+
+        Returns:
+            (name, address) pair, used to look the stored id up.
+        """
+        return self.name, self.address
+
+
+@dataclass(frozen=True, slots=True)
+class Subject:
+    """
+    A teaching module of one curriculum, derived from the events that mention it.
+
+    The feed has no subject list: subjects are what is left after grouping the
+    events by (title, module_code, professor).
+
+    Attributes:
+        title: Subject name as printed in the feed, uppercased and unformatted.
+        module_code: UniBo module code (cod_modulo). None for some events.
+        professor: Teacher name. Part of the identity: the same module taught by
+            two people counts as two subjects.
+        credits: CFU, whole number here (the subjects column is SMALLINT).
+        group_id: Stream the subject belongs to, e.g. "CL.A". None when the
+            subject is not split into streams.
+        is_active: False once the subject stopped appearing in the feed. Such
+            rows are kept because events may still reference them.
+        id: Database id. None for a subject that has not been stored yet.
+    """
+
+    title: str
+    module_code: Optional[str] = None
+    professor: Optional[str] = None
+    credits: Optional[int] = None
+    group_id: Optional[str] = None
+    is_active: bool = True
+    id: Optional[UUID] = None
+
+    @property
+    def key(self) -> SubjectKey:
+        """
+        Identity of the subject inside its curriculum.
+
+        Returns:
+            (title, module_code, professor) triple.
+        """
+        return self.title, self.module_code, self.professor
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """
+    A single lesson: one row of the timetable, scraped or stored.
+
+    The same class covers both directions, so the identity fields are optional:
+    a scraped event has no `id` yet, a stored one always has.
+
+    Attributes:
+        title: Subject name the event belongs to.
+        start: Start time, always timezone-aware in Europe/Rome.
+        end: End time, always timezone-aware in Europe/Rome.
+        professor: Teacher name.
+        module_code: UniBo module code (cod_modulo).
+        credits: CFU as Decimal, matching the NUMERIC(4,1) column.
+        group_id: Stream of the event, taken from cod_sdoppiamento only.
+        classroom: Room the lesson happens in. None when the feed gives none,
+            or gives one without a name.
+        location: Raw room name from the feed, kept apart from `classroom`
+            because content_hash is built on it. See content_hash.
+        is_remote: True for online lessons, which usually carry a teams_link.
+        teams_link: Microsoft Teams url of a remote lesson.
+        notes: Free-text note of the feed.
+        id: Database id. None for a scraped event.
+        subject_id: Owning subject. None for a scraped event, since subjects are
+            resolved only while writing.
+    """
+
+    title: str
+    start: datetime
+    end: datetime
+    professor: Optional[str] = None
+    module_code: Optional[str] = None
+    credits: Optional[Decimal] = None
+    group_id: Optional[str] = None
+    classroom: Optional[Classroom] = None
+    location: Optional[str] = None
+    is_remote: bool = False
+    teams_link: Optional[str] = None
+    notes: Optional[str] = None
+    id: Optional[UUID] = None
+    subject_id: Optional[UUID] = None
+
+    @property
+    def subject_key(self) -> SubjectKey:
+        """
+        Key of the subject this event belongs to.
+
+        Returns:
+            (title, module_code, professor) triple, matching Subject.key.
+        """
+        return self.title, self.module_code, self.professor
+
+    @property
+    def content_hash(self) -> str:
+        """
+        Identity of an event as seen on the UniBo site.
+
+        Built from `location`, the raw room name of the feed, and not from
+        `classroom`, which is already normalized: the hash must not move when
+        normalization rules do. Changing the field set invalidates every row of
+        timetable_events, so the set is fixed.
+
+        Returns:
+            Hex sha256 over title, start, end, professor, location and is_remote.
+        """
+        fields = {
+            "title": self.title,
+            "start": self.start,
+            "end": self.end,
+            "professor": self.professor,
+            "location": self.location,
+            "is_remote": self.is_remote,
+        }
+        payload = json.dumps(fields, sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def as_subject(self) -> Subject:
+        """
+        Builds the subject this event implies.
+
+        Returns:
+            Subject carrying the identity fields plus credits and group taken
+            from this event.
+        """
+        return Subject(
+            title=self.title,
+            module_code=self.module_code,
+            professor=self.professor,
+            credits=int(self.credits) if self.credits is not None else None,
+            group_id=self.group_id,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Timetable:
+    """
+    One scrape of a curriculum timetable.
+
+    Attributes:
+        content_hash: Hash of the whole timetable, computed by unibo_toolkit.
+            Compared against curricula.timetable_hash to decide whether anything
+            has to be written at all.
+        events: Every lesson of the curriculum, in feed order.
+    """
+
+    content_hash: str
+    events: Sequence[Event] = field(default_factory=tuple)
+
+    def subjects(self) -> List[Subject]:
+        """
+        Distinct subjects mentioned by the events.
+
+        Credits and group of a subject come from the first event carrying its
+        key, the way the pre-refactor code resolved them.
+
+        Returns:
+            One Subject per (title, module_code, professor).
+        """
+        unique: Dict[SubjectKey, Subject] = {}
+        for event in self.events:
+            unique.setdefault(event.subject_key, event.as_subject())
+        return list(unique.values())
+
+    def classrooms(self) -> List[Classroom]:
+        """
+        Distinct classrooms worth storing.
+
+        Nameless rooms are left out: the name is all that identifies them and
+        the column is NOT NULL.
+
+        Returns:
+            One Classroom per (name, address).
+        """
+        unique: Dict[ClassroomKey, Classroom] = {}
+        for event in self.events:
+            if event.classroom and event.classroom.name:
+                unique.setdefault(event.classroom.key, event.classroom)
+        return list(unique.values())

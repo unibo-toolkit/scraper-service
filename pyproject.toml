@@ -36,7 +36,7 @@ colorama = "^0.4.6"
 
 [tool.black]
 line-length = 100
-target-version = ['py312']
+target-version = ['py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -63,12 +63,29 @@ ensure_newline_before_comments = true
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PT"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    "UP006",
+    "UP007",
+    "UP035",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# Depends/Query in argument defaults is how FastAPI declares dependencies.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
