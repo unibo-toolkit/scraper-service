@@ -46,6 +46,9 @@ class EventResponse(BaseModel):
     teams_link: Optional[str]
     notes: Optional[str]
     group_id: Optional[str]
+    family_hash: str
+    weekday: int
+    slot_start: str
     classroom: Optional[ClassroomResponse]
 
     @classmethod
@@ -63,6 +66,9 @@ class EventResponse(BaseModel):
             teams_link=event.teams_link,
             notes=event.notes,
             group_id=event.group_id,
+            family_hash=event.family_hash,
+            weekday=event.slot.weekday,
+            slot_start=event.slot.start_time,
             classroom=ClassroomResponse.of(event.classroom) if event.classroom else None,
         )
 

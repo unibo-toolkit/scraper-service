@@ -1,7 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Sequence
-from zoneinfo import ZoneInfo
 
 from unibo_toolkit import Area, BaseCourse
 from unibo_toolkit.models import Classroom as UniBoClassroom
@@ -9,9 +8,7 @@ from unibo_toolkit.models import Curriculum as UniBoCurriculum
 from unibo_toolkit.models import CurriculumTimetable, TimetableEvent
 
 from app.models.courses import Course, Curriculum
-from app.models.timetable import Classroom, Event, Timetable
-
-ROME_TZ = ZoneInfo("Europe/Rome")
+from app.models.timetable import ROME_TZ, Classroom, Event, Timetable
 
 COURSE_TYPES = {
     "bachelor": "Bachelor",

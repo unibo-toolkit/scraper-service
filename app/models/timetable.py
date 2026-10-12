@@ -5,9 +5,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Sequence, Tuple
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 SubjectKey = Tuple[str, Optional[str], Optional[str]]
 ClassroomKey = Tuple[str, Optional[str]]
+
+ROME_TZ = ZoneInfo("Europe/Rome")
+
+# Slot width used to group lessons into a family. Real slots sit 10 minutes
+# apart at the closest and 120 at the median, so a quarter-hour absorbs the
+# jitter of the feed without merging neighbors.
+FAMILY_SLOT_MINUTES = 15
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +89,31 @@ class Subject:
             (title, module_code, professor) triple.
         """
         return self.title, self.module_code, self.professor
+
+
+@dataclass(frozen=True, slots=True)
+class Slot:
+    """
+    A weekly position: local weekday plus the start time rounded to the family
+    grid. Worth storing next to a user exclusion, so the family can be found
+    again after the timetable moves it.
+
+    Attributes:
+        weekday: Monday is 0, as datetime.weekday() reports it.
+        start_minutes: Minutes since local midnight, a multiple of
+            FAMILY_SLOT_MINUTES.
+    """
+
+    weekday: int
+    start_minutes: int
+
+    @property
+    def start_time(self) -> str:
+        """
+        Returns:
+            Start of the slot as "HH:MM", ready to show to a user.
+        """
+        return f"{self.start_minutes // 60:02d}:{self.start_minutes % 60:02d}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +208,45 @@ class Event:
             credits=int(self.credits) if self.credits is not None else None,
             group_id=self.group_id,
         )
+
+    @property
+    def slot(self) -> Slot:
+        """
+        Weekly slot this lesson sits in, in local time.
+
+        Returns:
+            Slot with the local weekday and the start minute rounded down to
+            the family grid.
+        """
+        start = self.start.astimezone(ROME_TZ)
+        minutes = start.hour * 60 + start.minute
+        return Slot(weekday=start.weekday(), start_minutes=minutes - minutes % FAMILY_SLOT_MINUTES)
+
+    @property
+    def family_hash(self) -> str:
+        """
+        Identity of a family of events, i.e. every lesson of this subject that
+        recurs in the same weekly slot.
+
+        Duration is left out on purpose: a lesson that runs short once is still
+        the same lesson, and keeping it split 210 real slots in two. The slot is
+        read in local time, otherwise a family breaks apart at every DST change.
+
+        Returns:
+            Hex sha256 over subject_id, group_id, weekday and start slot.
+        """
+        if not self.subject_id:
+            raise ValueError("Cannot compute family_hash without subject_id")
+
+        slot = self.slot
+        fields = {
+            "subject_id": self.subject_id,
+            "group_id": self.group_id,
+            "weekday": slot.weekday,
+            "start_bucket": slot.start_minutes // FAMILY_SLOT_MINUTES,
+        }
+        payload = json.dumps(fields, sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
