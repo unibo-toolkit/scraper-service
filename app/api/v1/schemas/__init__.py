@@ -5,7 +5,6 @@ from app.api.v1.schemas.timetable import (
     EventResponse,
     PreviewResponse,
     RefreshResponse,
-    TimetableResponse,
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "RefreshResponse",
     "SubjectResponse",
     "SubjectsResponse",
-    "TimetableResponse",
 ]

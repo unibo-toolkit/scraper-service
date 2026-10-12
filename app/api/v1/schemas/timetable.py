@@ -73,15 +73,6 @@ class EventResponse(BaseModel):
         )
 
 
-class TimetableResponse(BaseModel):
-    items: List[EventResponse]
-    total: int
-
-    @classmethod
-    def of(cls, events: List[Event]) -> "TimetableResponse":
-        return cls(items=[EventResponse.of(event) for event in events], total=len(events))
-
-
 class PreviewResponse(BaseModel):
     items: List[EventResponse]
     from_date: Optional[IsoDatetime]

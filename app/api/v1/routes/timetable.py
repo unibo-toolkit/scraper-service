@@ -5,7 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.schemas import EventResponse, PreviewResponse, RefreshResponse, TimetableResponse
+from app.api.exceptions import ValidationError
+from app.api.v1.schemas import EventResponse, PreviewResponse, RefreshResponse
 from app.core.database import CurriculaOperations, EventsOperations
 from app.core.timetable import TimetableSync
 from app.models.timetable import Event
@@ -17,24 +18,41 @@ router = APIRouter()
 PREVIEW_WEEKS_BEFORE = 1
 PREVIEW_WEEKS_AFTER = 2
 
+MAX_SUBJECT_IDS = 100
 
-@router.get("/timetable", deprecated=True, response_model=TimetableResponse)
-async def get_timetable(
-    subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
-    session: AsyncSession = Depends(get_db),
-):
-    logger = CustomLogger("api:get_timetable", subject_count=len(subject_ids))
-    logger.info("handling get timetable request")
 
-    await TimetableSync(session, logger).refresh_stale(subject_ids)
-    events = await EventsOperations(session, logger).list_by_subjects(subject_ids)
+def parse_subject_ids(
+    subject_ids: List[str] = Query(..., description="Subject UUIDs, repeated or comma-separated"),
+) -> List[UUID]:
+    """
+    Reads the subject ids of a request in either form the clients use:
+    repeated parameters, or one comma-separated value.
 
-    return TimetableResponse.of(events)
+    Returns:
+        The ids in the order given, without duplicates.
+
+    Raises:
+        ValidationError: If a value is not a UUID, none are given, or there are
+            more than MAX_SUBJECT_IDS of them.
+    """
+    values = [part for value in subject_ids for part in value.split(",") if part]
+
+    try:
+        parsed = list(dict.fromkeys(UUID(value) for value in values))
+    except ValueError:
+        raise ValidationError("Invalid subject UUIDs provided") from None
+
+    if not parsed:
+        raise ValidationError("At least one subject UUID is required")
+    if len(parsed) > MAX_SUBJECT_IDS:
+        raise ValidationError(f"At most {MAX_SUBJECT_IDS} subject UUIDs are allowed")
+
+    return parsed
 
 
 @router.post("/timetable/refresh", response_model=RefreshResponse)
 async def refresh_timetable(
-    subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
+    subject_ids: List[UUID] = Depends(parse_subject_ids),
     session: AsyncSession = Depends(get_db),
 ):
     logger = CustomLogger("api:refresh_timetable", subject_count=len(subject_ids))
@@ -63,9 +81,9 @@ async def refresh_timetable(
     return RefreshResponse(status="completed", updated=updated)
 
 
-@router.get("/preview", response_model=PreviewResponse)
+@router.get("timetable/preview", response_model=PreviewResponse)
 async def preview_timetable(
-    subject_ids: List[UUID] = Query(..., description="List of subject UUIDs"),
+    subject_ids: List[UUID] = Depends(parse_subject_ids),
     page: int = Query(0, description="Page offset in weeks from the target event week"),
     format_titles: bool = Query(False, description="Apply title formatting (preview)"),
     session: AsyncSession = Depends(get_db),
