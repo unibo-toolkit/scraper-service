@@ -103,6 +103,7 @@ class CalendarLinks(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     lang: Mapped[str] = mapped_column(String(5), nullable=False, server_default=text("'it'::character varying"))
+    format_event_titles: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
     description: Mapped[Optional[str]] = mapped_column(Text)
     last_accessed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
@@ -205,7 +206,8 @@ class CalendarSubscriptions(Base):
     __table_args__ = (
         ForeignKeyConstraint(['calendar_id'], ['calendar_links.id'], ondelete='CASCADE', name='calendar_subscriptions_calendar_id_fkey'),
         PrimaryKeyConstraint('id', name='calendar_subscriptions_pkey'),
-        Index('idx_calendar_subscriptions_calendar_id', 'calendar_id')
+        Index('idx_calendar_subscriptions_calendar_id', 'calendar_id'),
+        Index('uniq_calendar_subscriptions_calendar_ip_ua', 'calendar_id', 'ip_hash', 'user_agent', unique=True)
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('uuid_generate_v4()'))
@@ -291,6 +293,7 @@ class TimetableEvents(Base):
     teams_link: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     group_id: Mapped[Optional[str]] = mapped_column(String(50))
+    family_hash: Mapped[Optional[str]] = mapped_column(String(64))
 
     classroom: Mapped[Optional['Classrooms']] = relationship('Classrooms', back_populates='timetable_events')
     subject: Mapped['Subjects'] = relationship('Subjects', back_populates='timetable_events')
