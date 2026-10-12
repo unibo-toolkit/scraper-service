@@ -46,6 +46,19 @@ async def get_course_subjects(
     return SubjectsResponse.of(subjects, format_titles)
 
 
+@router.get("/courses/{course_id}/subjects", response_model=SubjectsResponse, deprecated=True)
+async def get_course_subjects_legacy(
+        course_id: UUID,
+        curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+        include_inactive: bool = Query(False, description="Include inactive subjects"),
+        format_titles: bool = Query(False, description="Apply title formatting (preview)"),
+        session: AsyncSession = Depends(get_db),
+):
+    return await get_course_subjects(
+        course_id, curriculum_id, include_inactive, format_titles, session
+    )
+
+
 async def __fresh_cache(curriculum, logger: CustomLogger):
     """
     Cached subjects are served only while the timetable itself is recent
