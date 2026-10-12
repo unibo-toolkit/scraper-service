@@ -81,7 +81,7 @@ async def refresh_timetable(
     return RefreshResponse(status="completed", updated=updated)
 
 
-@router.get("timetable/preview", response_model=PreviewResponse)
+@router.get("/timetable/preview", response_model=PreviewResponse)
 async def preview_timetable(
     subject_ids: List[UUID] = Depends(_parse_subject_ids),
     page: int = Query(0, description="Page offset in weeks from the target event week"),
