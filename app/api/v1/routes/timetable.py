@@ -21,7 +21,7 @@ PREVIEW_WEEKS_AFTER = 2
 MAX_SUBJECT_IDS = 100
 
 
-def parse_subject_ids(
+def _parse_subject_ids(
     subject_ids: List[str] = Query(..., description="Subject UUIDs, repeated or comma-separated"),
 ) -> List[UUID]:
     """
@@ -52,7 +52,7 @@ def parse_subject_ids(
 
 @router.post("/timetable/refresh", response_model=RefreshResponse)
 async def refresh_timetable(
-    subject_ids: List[UUID] = Depends(parse_subject_ids),
+    subject_ids: List[UUID] = Depends(_parse_subject_ids),
     session: AsyncSession = Depends(get_db),
 ):
     logger = CustomLogger("api:refresh_timetable", subject_count=len(subject_ids))
@@ -83,7 +83,7 @@ async def refresh_timetable(
 
 @router.get("timetable/preview", response_model=PreviewResponse)
 async def preview_timetable(
-    subject_ids: List[UUID] = Depends(parse_subject_ids),
+    subject_ids: List[UUID] = Depends(_parse_subject_ids),
     page: int = Query(0, description="Page offset in weeks from the target event week"),
     format_titles: bool = Query(False, description="Apply title formatting (preview)"),
     session: AsyncSession = Depends(get_db),
