@@ -33,6 +33,7 @@ sqlacodegen = "^3.0.0rc5"
 psycopg2-binary = "^2.9.11"
 httpx = "^0.28.1"
 colorama = "^0.4.6"
+psycopg = "^3.3.6"
 
 [tool.black]
 line-length = 100
