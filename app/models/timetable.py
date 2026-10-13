@@ -212,15 +212,12 @@ class Event:
     @property
     def slot(self) -> Slot:
         """
-        Weekly slot this lesson sits in, in local time.
-
+        Slot a lesson starting at the given moment to.
         Returns:
             Slot with the local weekday and the start minute rounded down to
             the family grid.
         """
-        start = self.start.astimezone(ROME_TZ)
-        minutes = start.hour * 60 + start.minute
-        return Slot(weekday=start.weekday(), start_minutes=minutes - minutes % FAMILY_SLOT_MINUTES)
+        return self.slot_of(self.start)
 
     @property
     def family_hash(self) -> str:
@@ -247,6 +244,19 @@ class Event:
         }
         payload = json.dumps(fields, sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()
+
+    @staticmethod
+    def slot_of(start: datetime) -> Slot:
+        """
+        Weekly slot this lesson sits in, in local time.
+
+        Returns:
+            Slot with the local weekday and the start minute rounded down to
+            the family grid.
+        """
+        start = start.astimezone(ROME_TZ)
+        minutes = start.hour * 60 + start.minute
+        return Slot(weekday=start.weekday(), start_minutes=minutes - minutes % FAMILY_SLOT_MINUTES)
 
 
 @dataclass(frozen=True, slots=True)

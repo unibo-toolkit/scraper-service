@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Set
 from uuid import UUID
@@ -53,10 +54,15 @@ class EventsOperations(Operations):
         Rows are identified by content_hash, so an event that did not change is
         left untouched and keeps its id.
         """
-        payload = [
-            self.__payload(event, subjects, classrooms)
+        resolved = [
+            replace(event, subject_id=subjects[event.subject_key])
             for event in events
             if event.subject_key in subjects
+        ]
+
+        payload = [
+            self.__payload(event, classrooms)
+            for event in resolved
         ]
 
         await self.__delete_missing(subject_ids, {row["content_hash"] for row in payload})
@@ -81,11 +87,10 @@ class EventsOperations(Operations):
     @staticmethod
     def __payload(
         event: Event,
-        subjects: Dict[SubjectKey, UUID],
         classrooms: Dict[ClassroomKey, UUID],
     ) -> dict:
         return {
-            "subject_id": subjects[event.subject_key],
+            "subject_id": event.subject_id,
             "title": event.title,
             "start_datetime": event.start,
             "end_datetime": event.end,
