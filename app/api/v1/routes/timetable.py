@@ -24,7 +24,7 @@ MAX_EXCLUDED_FAMILIES = 300
 
 def _parse_excluded_families(
     excluded_families: List[str] = Query(
-        ..., description="Event family hashes to exclude, repeated or comma-separated"
+        Optional[List[str]], description="Event family hashes to exclude, repeated or comma-separated"
     ),
 ) -> Set[str]:
     """
@@ -37,6 +37,9 @@ def _parse_excluded_families(
     Raises:
         ValidationError: If none are given, or there are more than MAX_EXCLUDED_FAMILIES of them.
     """
+    if not excluded_families:
+        return set()
+
     values = [part for value in excluded_families for part in value.split(",") if part]
 
     if len(values) > MAX_EXCLUDED_FAMILIES:
