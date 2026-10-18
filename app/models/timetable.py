@@ -1,9 +1,10 @@
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Set
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -159,6 +160,8 @@ class Event:
     id: Optional[UUID] = None
     subject_id: Optional[UUID] = None
 
+    FAMILY_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
     @property
     def subject_key(self) -> SubjectKey:
         """
@@ -258,6 +261,35 @@ class Event:
         minutes = start.hour * 60 + start.minute
         return Slot(weekday=start.weekday(), start_minutes=minutes - minutes % FAMILY_SLOT_MINUTES)
 
+    @staticmethod
+    def validate_family_hash(family_hash: str) -> None:
+        """
+        Validates a single family_hash, raising ValueError if invalid.
+
+        Args:
+            family_hash: family_hash to validate.
+        """
+        if not Event.FAMILY_HASH_PATTERN.match(family_hash):
+            raise ValueError(f"Invalid family_hash: {family_hash}")
+
+    @staticmethod
+    def validate_family_hashes(family_hashes: List[str]) -> Set[str]:
+        """
+        Validates a list of family_hashes, raising ValueError on the first
+        invalid one.
+
+        Args:
+            family_hashes: List of family_hashes to validate.
+
+        Returns:
+            Set of valid family_hashes.
+        """
+        valid: Set[str] = set()
+        for family_hash in family_hashes:
+            Event.validate_family_hash(family_hash)
+            valid.add(family_hash)
+        return valid
+
 
 @dataclass(frozen=True, slots=True)
 class Timetable:
@@ -304,3 +336,29 @@ class Timetable:
             if event.classroom and event.classroom.name:
                 unique.setdefault(event.classroom.key, event.classroom)
         return list(unique.values())
+
+
+@dataclass(frozen=True, slots=True)
+class Family:
+    """
+    A recurring lesson: every event of one subject that sits in the same weekly
+    slot. This is the unit a user excludes from their calendar.
+
+    Attributes:
+        subject_id: Owning subject.
+        family_hash: Value of Event.family_hash shared by every member.
+        slot: Weekly position, the same for all members by construction.
+        group_id: Stream of the lessons, part of the family identity.
+        events: How many lessons the family holds. 1 642 of 6 480 families hold
+            exactly one, so the number is worth showing to a user.
+        first_at: Start of the earliest lesson.
+        last_at: Start of the latest lesson.
+    """
+
+    subject_id: UUID
+    family_hash: str
+    slot: Slot
+    group_id: Optional[str]
+    events: int
+    first_at: datetime
+    last_at: datetime

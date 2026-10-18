@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Set
 from uuid import UUID
 
 from pydantic import BaseModel, PlainSerializer
@@ -28,8 +28,12 @@ class ClassroomResponse(BaseModel):
             id=classroom.id,
             name=classroom.name,
             address=classroom.address,
-            latitude=float(classroom.latitude) if classroom.latitude is not None else None,
-            longitude=float(classroom.longitude) if classroom.longitude is not None else None,
+            latitude=(
+                float(classroom.latitude) if classroom.latitude is not None else None
+            ),
+            longitude=(
+                float(classroom.longitude) if classroom.longitude is not None else None
+            ),
         )
 
 
@@ -50,9 +54,20 @@ class EventResponse(BaseModel):
     weekday: int
     slot_start: str
     classroom: Optional[ClassroomResponse]
+    excluded: bool = (
+        False  # excluded field must be populated by the API, not by the database
+    )
 
     @classmethod
-    def of(cls, event: Event, format_titles: bool = False) -> "EventResponse":
+    def of(
+        cls,
+        event: Event,
+        format_titles: bool = False,
+        excluded_hashes: Optional[Set[str]] = None,
+    ) -> "EventResponse":
+        if excluded_hashes is None:
+            excluded_hashes = set()
+
         return cls(
             id=event.id,
             subject_id=event.subject_id,
@@ -69,7 +84,10 @@ class EventResponse(BaseModel):
             family_hash=event.family_hash,
             weekday=event.slot.weekday,
             slot_start=event.slot.start_time,
-            classroom=ClassroomResponse.of(event.classroom) if event.classroom else None,
+            classroom=(
+                ClassroomResponse.of(event.classroom) if event.classroom else None
+            ),
+            excluded=event.family_hash in excluded_hashes
         )
 
 
@@ -80,6 +98,10 @@ class PreviewResponse(BaseModel):
     total: int
     courses_events_count: int
     target: Optional[EventResponse]
+
+    #  Families
+    excluded_events_count: int
+    excluded_hashes: List[str]
 
 
 class RefreshResponse(BaseModel):
