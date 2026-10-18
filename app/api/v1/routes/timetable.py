@@ -9,7 +9,6 @@ from app.api.exceptions import ValidationError
 from app.api.v1.schemas import EventResponse, PreviewResponse, RefreshResponse
 from app.core.database import CurriculaOperations, EventsOperations
 from app.core.timetable import TimetableSync
-from app.models import Event
 from app.models.timetable import Event
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import get_db
