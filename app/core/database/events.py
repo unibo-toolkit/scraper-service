@@ -103,6 +103,7 @@ class EventsOperations(Operations):
             "credits": event.credits,
             "group_id": event.group_id,
             "content_hash": event.content_hash,
+            "family_hash": event.family_hash,
         }
 
     async def cleanup_stale(self, stale_before: datetime, protected_after: datetime) -> int:
