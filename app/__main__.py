@@ -7,7 +7,7 @@ from app.api.server import app
 from app.scheduler.scheduler import start_scheduler, stop_scheduler
 from app.scheduler.jobs import update_courses_cache
 from app.utils.custom_logger import CustomLogger
-from app.utils.database import close, init
+from app.utils import database
 from app.utils.redis_client import redis_client
 
 log.setup()
@@ -18,7 +18,7 @@ logger = CustomLogger("Main")
 async def setup():
     logger.info("starting scraper-service", port=config.app.port)
 
-    await init()
+    await database.init()
     await redis_client.connect()
 
     if config.app.skip_startup_jobs:
@@ -40,7 +40,7 @@ async def shutdown():
     logger.info("shutting down scraper-service")
 
     stop_scheduler()
-    await close()
+    await database.close()
     await redis_client.disconnect()
 
     logger.info("shutdown complete")

@@ -1,76 +1,78 @@
-from fastapi import APIRouter, Query, Depends
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
-from datetime import datetime, timedelta, UTC
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import config
+from app.api.exceptions import NotFoundError
+from app.api.v1.schemas import SubjectsResponse
+from app.core.cache import SubjectsCache
+from app.core.database import CurriculaOperations
+from app.core.timetable import TimetableSync, is_fresh
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import get_db
-from app.utils.title_formatter import format_event_title
-from app.core import cache
-from app.core.subjects import fetch_and_save_subjects
-from app.core.database import DatabaseOperations
-from app.api.exceptions import NotFoundError
-from app import config
 
 router = APIRouter()
 
 
-@router.get("/courses/{course_id}/subjects")
+@router.get("/courses/{course_id}/curricula/{curricula_id}/subjects", response_model=SubjectsResponse)
 async def get_course_subjects(
     course_id: UUID,
-    curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+    curricula_id: UUID,
     include_inactive: bool = Query(False, description="Include inactive subjects"),
     format_titles: bool = Query(False, description="Apply title formatting (preview)"),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
 ):
-    logger = CustomLogger("api:get_course_subjects")
+    logger = CustomLogger("api:get_course_subjects", curriculum_id=str(curricula_id))
+    logger.info("handling get course subjects request")
 
-    db_ops = DatabaseOperations(session, logger)
-
-    course = await db_ops.get_course_by_id(course_id)
-    if not course:
-        raise NotFoundError(f"Course {course_id} not found")
-
-    curriculum = await db_ops.get_curriculum_by_id(curriculum_id)
-    if not curriculum:
-        raise NotFoundError(f"Curriculum {curriculum_id} not found")
-
-    if curriculum.course_id != course.id:
-        raise NotFoundError(f"Curriculum {curriculum_id} does not belong to course {course_id}")
-
-    cache_key = f"subjects:{curriculum.id}"
-    if not include_inactive:
-        refresh_threshold = datetime.now(UTC) - timedelta(seconds=config.scraper.subjects_refresh_ttl)
-        is_stale = (
-            curriculum.timetable_updated_at is None
-            or curriculum.timetable_updated_at <= refresh_threshold
+    pair = await CurriculaOperations(session, logger).get(curricula_id)
+    if not pair:
+        raise NotFoundError(f"Curriculum {curricula_id} not found")
+    if pair.course.id != course_id:
+        raise NotFoundError(
+            f"Curriculum {curricula_id} does not belong to course {course_id}"
         )
-        if not is_stale:
-            cached = await cache.get_cached_subjects(cache_key, logger)
-            if cached:
-                logger.debug("returning cached subjects", curriculum_id=str(curriculum.id))
-                if format_titles:
-                    cached = [{**s, "title": format_event_title(s["title"])} for s in cached]
-                return {"items": cached}
-        else:
-            logger.info(
-                "subjects are stale, bypassing cache",
-                curriculum_id=str(curriculum.id),
-                updated_at=curriculum.timetable_updated_at.isoformat() if curriculum.timetable_updated_at else None,
-            )
 
-    subjects = await fetch_and_save_subjects(
-        session,
-        course,
-        curriculum,
-        logger,
-        active_only=not include_inactive,
+    if not include_inactive:
+        cached = await __fresh_cache(pair.curriculum, logger)
+        if cached is not None:
+            return SubjectsResponse.of(cached, format_titles)
+
+    subjects = await TimetableSync(session, logger).sync(
+        pair, active_only=not include_inactive
+    )
+    return SubjectsResponse.of(subjects, format_titles)
+
+
+@router.get("/courses/{course_id}/subjects", response_model=SubjectsResponse, deprecated=True)
+async def get_course_subjects_legacy(
+        course_id: UUID,
+        curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+        include_inactive: bool = Query(False, description="Include inactive subjects"),
+        format_titles: bool = Query(False, description="Apply title formatting (preview)"),
+        session: AsyncSession = Depends(get_db),
+):
+    return await get_course_subjects(
+        course_id, curriculum_id, include_inactive, format_titles, session
     )
 
-    if not include_inactive:
-        await cache.set_cached_subjects(cache_key, subjects, logger)
 
-    if format_titles:
-        subjects = [{**s, "title": format_event_title(s["title"])} for s in subjects]
+async def __fresh_cache(curriculum, logger: CustomLogger):
+    """
+    Cached subjects are served only while the timetable itself is recent
+    enough, otherwise the sync has to run first.
+    """
+    threshold = datetime.now(UTC) - timedelta(seconds=config.scraper.subjects_refresh_ttl)
 
-    return {"items": subjects}
+    if not is_fresh(curriculum.timetable_updated_at, threshold):
+        logger.info(
+            "subjects are stale, bypassing cache",
+            updated_at=curriculum.timetable_updated_at.isoformat()
+            if curriculum.timetable_updated_at
+            else None,
+        )
+        return None
+
+    return await SubjectsCache(logger).get(curriculum.id)

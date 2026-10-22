@@ -1,4 +1,6 @@
+from app.models.courses import Course, CourseCurriculum, Curriculum
 from app.models.generated import (
+    Base,
     CalendarCourses,
     CalendarLinks,
     CalendarSubjects,
@@ -13,21 +15,32 @@ from app.models.generated import (
     TimetableEvents,
     Users,
 )
-from app.utils.database import Base
+from app.models.timetable import Classroom, ClassroomKey, Event, Subject, SubjectKey, Timetable
 
 __all__ = [
+    # ORM
     "Base",
-    "Courses",
-    "Curricula",
-    "Subjects",
-    "TimetableEvents",
-    "Classrooms",
-    "CalendarLinks",
     "CalendarCourses",
+    "CalendarLinks",
     "CalendarSubjects",
     "CalendarSubscriptions",
-    "Users",
+    "Classrooms",
+    "Courses",
+    "Curricula",
     "OauthProviders",
     "RefreshTokens",
     "SchemaMigrations",
+    "Subjects",
+    "TimetableEvents",
+    "Users",
+    # domain
+    "Classroom",
+    "ClassroomKey",
+    "Course",
+    "CourseCurriculum",
+    "Curriculum",
+    "Event",
+    "Subject",
+    "SubjectKey",
+    "Timetable",
 ]
