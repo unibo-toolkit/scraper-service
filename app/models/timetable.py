@@ -180,7 +180,8 @@ class Event:
         Built from `location`, the raw room name of the feed, and not from
         `classroom`, which is already normalized: the hash must not move when
         normalization rules do. Changing the field set invalidates every row of
-        timetable_events, so the set is fixed.
+        timetable_events, so the set is fixed: the columns left out of it are
+        refreshed in place by EventsOperations.sync instead.
 
         Returns:
             Hex sha256 over title, start, end, professor, location and is_remote.
@@ -297,9 +298,10 @@ class Timetable:
     One scrape of a curriculum timetable.
 
     Attributes:
-        content_hash: Hash of the whole timetable, computed by unibo_toolkit.
-            Compared against curricula.timetable_hash to decide whether anything
-            has to be written at all.
+        content_hash: Hash of the whole timetable, computed by unibo_toolkit
+            over every field of every event. Compared against
+            curricula.timetable_hash to decide whether anything has to be
+            written at all.
         events: Every lesson of the curriculum, in feed order.
     """
 

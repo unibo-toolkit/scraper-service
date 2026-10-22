@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Dict, Iterable, List, Optional, Sequence, Set
 from uuid import UUID
 
 from sqlalchemy import delete, or_, select
@@ -18,6 +18,19 @@ from app.models.generated import (
 from app.models.timetable import Classroom, ClassroomKey, Event, SubjectKey
 
 UNIQUE_EVENT_CONSTRAINT = "timetable_events_unique_event"
+
+# Columns a scrape may change without moving the row identity: the unique
+# constraint only covers subject_id, start, end and content_hash, and
+# content_hash itself is built on a subset of the fields.
+MUTABLE_COLUMNS = (
+    "classroom_id",
+    "teams_link",
+    "notes",
+    "module_code",
+    "credits",
+    "group_id",
+    "family_hash",
+)
 
 
 class EventsOperations(Operations):
@@ -51,8 +64,10 @@ class EventsOperations(Operations):
         """
         Replaces the events of the given subjects with the scraped ones.
 
-        Rows are identified by content_hash, so an event that did not change is
-        left untouched and keeps its id.
+        Rows are identified by content_hash, so an event that did not change
+        keeps its id. The columns outside that identity, the classroom above
+        all, are refreshed in place: they would otherwise stay as first
+        scraped forever.
         """
         resolved = [
             replace(event, subject_id=subjects[event.subject_key])
@@ -60,19 +75,49 @@ class EventsOperations(Operations):
             if event.subject_key in subjects
         ]
 
-        payload = [
-            self.__payload(event, classrooms)
-            for event in resolved
-        ]
+        payload = self.__deduplicate(self.__payload(event, classrooms) for event in resolved)
 
         await self.__delete_missing(subject_ids, {row["content_hash"] for row in payload})
 
         if payload:
             stmt = insert(TimetableEvents).values(payload)
             await self.session.execute(
-                stmt.on_conflict_do_nothing(constraint=UNIQUE_EVENT_CONSTRAINT)
+                stmt.on_conflict_do_update(
+                    constraint=UNIQUE_EVENT_CONSTRAINT,
+                    set_={column: stmt.excluded[column] for column in MUTABLE_COLUMNS},
+                    # Without it every pass would touch every row and fire the
+                    # updated_at trigger for nothing.
+                    where=or_(
+                        *(
+                            TimetableEvents.__table__.c[column].is_distinct_from(
+                                stmt.excluded[column]
+                            )
+                            for column in MUTABLE_COLUMNS
+                        )
+                    ),
+                )
             )
             await self.session.flush()
+
+    @staticmethod
+    def __deduplicate(payload: Iterable[dict]) -> List[dict]:
+        """
+        Drops rows repeating a conflict target, which ON CONFLICT DO UPDATE
+        refuses to touch twice in one statement.
+
+        Returns:
+            One row per (subject_id, start, end, content_hash), first wins.
+        """
+        unique: Dict[tuple, dict] = {}
+        for row in payload:
+            key = (
+                row["subject_id"],
+                row["start_datetime"],
+                row["end_datetime"],
+                row["content_hash"],
+            )
+            unique.setdefault(key, row)
+        return list(unique.values())
 
     async def __delete_missing(
         self, subject_ids: Sequence[UUID], keep_hashes: Set[str]
