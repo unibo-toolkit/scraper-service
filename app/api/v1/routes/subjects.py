@@ -16,23 +16,23 @@ from app.utils.database import get_db
 router = APIRouter()
 
 
-@router.get("/courses/{course_id}/subjects", response_model=SubjectsResponse)
+@router.get("/courses/{course_id}/curricula/{curricula_id}/subjects", response_model=SubjectsResponse)
 async def get_course_subjects(
     course_id: UUID,
-    curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+    curricula_id: UUID,
     include_inactive: bool = Query(False, description="Include inactive subjects"),
     format_titles: bool = Query(False, description="Apply title formatting (preview)"),
     session: AsyncSession = Depends(get_db),
 ):
-    logger = CustomLogger("api:get_course_subjects", curriculum_id=str(curriculum_id))
+    logger = CustomLogger("api:get_course_subjects", curriculum_id=str(curricula_id))
     logger.info("handling get course subjects request")
 
-    pair = await CurriculaOperations(session, logger).get(curriculum_id)
+    pair = await CurriculaOperations(session, logger).get(curricula_id)
     if not pair:
-        raise NotFoundError(f"Curriculum {curriculum_id} not found")
+        raise NotFoundError(f"Curriculum {curricula_id} not found")
     if pair.course.id != course_id:
         raise NotFoundError(
-            f"Curriculum {curriculum_id} does not belong to course {course_id}"
+            f"Curriculum {curricula_id} does not belong to course {course_id}"
         )
 
     if not include_inactive:
@@ -44,6 +44,19 @@ async def get_course_subjects(
         pair, active_only=not include_inactive
     )
     return SubjectsResponse.of(subjects, format_titles)
+
+
+@router.get("/courses/{course_id}/subjects", response_model=SubjectsResponse, deprecated=True)
+async def get_course_subjects_legacy(
+        course_id: UUID,
+        curriculum_id: UUID = Query(..., description="Curriculum UUID"),
+        include_inactive: bool = Query(False, description="Include inactive subjects"),
+        format_titles: bool = Query(False, description="Apply title formatting (preview)"),
+        session: AsyncSession = Depends(get_db),
+):
+    return await get_course_subjects(
+        course_id, curriculum_id, include_inactive, format_titles, session
+    )
 
 
 async def __fresh_cache(curriculum, logger: CustomLogger):
