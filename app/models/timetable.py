@@ -349,6 +349,8 @@ class Family:
     Attributes:
         subject_id: Owning subject.
         family_hash: Value of Event.family_hash shared by every member.
+        title: Subject name, taken from the latest member so a renamed subject
+            shows under its current name.
         slot: Weekly position, the same for all members by construction.
         group_id: Stream of the lessons, part of the family identity.
         events: How many lessons the family holds. 1 642 of 6 480 families hold
@@ -359,8 +361,63 @@ class Family:
 
     subject_id: UUID
     family_hash: str
+    title: str
     slot: Slot
     group_id: Optional[str]
     events: int
     first_at: datetime
     last_at: datetime
+
+    @classmethod
+    def of(cls, family_hash: str, events: Sequence[Event]) -> "Family":
+        """
+        Builds the family a group of events sharing a family_hash forms.
+
+        Args:
+            family_hash: Hash shared by the events.
+            events: Members of the family, at least one.
+
+        Returns:
+            Family described by its latest member.
+        """
+        ordered = sorted(events, key=lambda event: event.start)
+        latest = ordered[-1]
+
+        return cls(
+            subject_id=latest.subject_id,
+            family_hash=family_hash,
+            title=latest.title,
+            slot=latest.slot,
+            group_id=latest.group_id,
+            events=len(ordered),
+            first_at=ordered[0].start,
+            last_at=latest.start,
+        )
+
+
+def group_families(events: Sequence[Event], only: Optional[Set[str]] = None) -> List[Family]:
+    """
+    Groups events into families.
+
+    Args:
+        events: Events to group, every one of them carrying a subject_id.
+        only: Hashes to keep, or None for all of them. A hash matching no event
+            is simply absent from the result, which is how a client learns its
+            exclusion went stale.
+
+    Returns:
+        One Family per hash, ordered by weekly position.
+    """
+    if only is not None and not only:
+        return []
+
+    members: Dict[str, List[Event]] = {}
+    for event in events:
+        family_hash = event.family_hash
+        if only is None or family_hash in only:
+            members.setdefault(family_hash, []).append(event)
+
+    return sorted(
+        (Family.of(family_hash, group) for family_hash, group in members.items()),
+        key=lambda family: (family.slot.weekday, family.slot.start_minutes),
+    )
