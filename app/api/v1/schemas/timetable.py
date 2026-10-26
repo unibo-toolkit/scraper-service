@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, PlainSerializer
 
-from app.models.timetable import Classroom, Event
+from app.models.timetable import Classroom, Event, Family
 from app.utils.title_formatter import format_event_title
 
 # Pydantic renders a UTC datetime as "...Z", while the API has always sent the
@@ -91,6 +91,32 @@ class EventResponse(BaseModel):
         )
 
 
+class FamilyResponse(BaseModel):
+    family_hash: str
+    subject_id: UUID
+    title: str
+    group_id: Optional[str]
+    weekday: int
+    slot_start: str
+    events: int
+    first_at: IsoDatetime
+    last_at: IsoDatetime
+
+    @classmethod
+    def of(cls, family: Family, format_titles: bool = False) -> "FamilyResponse":
+        return cls(
+            family_hash=family.family_hash,
+            subject_id=family.subject_id,
+            title=format_event_title(family.title) if format_titles else family.title,
+            group_id=family.group_id,
+            weekday=family.slot.weekday,
+            slot_start=family.slot.start_time,
+            events=family.events,
+            first_at=family.first_at,
+            last_at=family.last_at,
+        )
+
+
 class PreviewResponse(BaseModel):
     items: List[EventResponse]
     from_date: Optional[IsoDatetime]
@@ -101,7 +127,7 @@ class PreviewResponse(BaseModel):
 
     #  Families
     excluded_events_count: int
-    excluded_hashes: List[str]
+    excluded_families: List[FamilyResponse]
 
 
 class RefreshResponse(BaseModel):

@@ -6,10 +6,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.exceptions import ValidationError
-from app.api.v1.schemas import EventResponse, PreviewResponse, RefreshResponse
+from app.api.v1.schemas import (
+    EventResponse,
+    FamilyResponse,
+    PreviewResponse,
+    RefreshResponse,
+)
 from app.core.database import CurriculaOperations, EventsOperations
 from app.core.timetable import TimetableSync
-from app.models.timetable import Event
+from app.models.timetable import Event, group_families
 from app.utils.custom_logger import CustomLogger
 from app.utils.database import get_db
 
@@ -146,7 +151,7 @@ async def preview_timetable(
             courses_events_count=0,
             target=None,
             excluded_events_count=0,
-            excluded_hashes=[],
+            excluded_families=[],
         )
 
     anchor = _anchor(events, datetime.now(UTC))
@@ -157,30 +162,31 @@ async def preview_timetable(
     window = [event for event in events if from_date <= event.start < to_date]
     target = _closest_to(window, monday)
 
-    # We should return all the events also excluded ones with a flag
-    confirmed_excluded_hashes = set()
-    excluded_events_count = 0
-    for event in window:
-        if event.family_hash in excluded_families:
-            confirmed_excluded_hashes.add(event.family_hash)
-            excluded_events_count += 1
+    # Excluded events are returned too, flagged: the client greys them out
+    # instead of losing a row of its calendar.
+    excluded_events_count = sum(
+        1 for event in window if event.family_hash in excluded_families
+    )
+
+    # Grouped over every event of the subjects, not over the window, so an
+    # exclusion the rendered weeks do not reach still gets a label.
+    families = group_families(events, excluded_families)
 
     return PreviewResponse(
         items=[
-            EventResponse.of(event, format_titles, confirmed_excluded_hashes)
-            for event in window
+            EventResponse.of(event, format_titles, excluded_families) for event in window
         ],
         from_date=from_date,
         to_date=to_date,
         total=len(window),
         courses_events_count=len(events),
         target=(
-            EventResponse.of(target, format_titles, confirmed_excluded_hashes)
-            if target
-            else None
+            EventResponse.of(target, format_titles, excluded_families) if target else None
         ),
         excluded_events_count=excluded_events_count,
-        excluded_hashes=list(confirmed_excluded_hashes),
+        excluded_families=[
+            FamilyResponse.of(family, format_titles) for family in families
+        ],
     )
 
 
